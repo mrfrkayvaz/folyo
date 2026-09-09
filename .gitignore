@@ -1,7 +1,21 @@
 case_study.docx
 
-# gizli ortam + yerel dizin verisi
+# Python & Derleme dosyaları
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.pytest_cache/
+
+# Node & Build çıktıları
+node_modules/
+dist/
+.env.local
+
+# Folyo özel ortam + yerel dizin verileri
 web-api/.env
 web-api/.ragdata/
 web-api/storage/
 web-api/chroma_data/
+
