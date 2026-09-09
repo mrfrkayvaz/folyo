@@ -1,0 +1,7 @@
+case_study.docx
+
+# gizli ortam + yerel dizin verisi
+web-api/.env
+web-api/.ragdata/
+web-api/storage/
+web-api/chroma_data/

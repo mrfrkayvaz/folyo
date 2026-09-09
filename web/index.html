@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Contextus — belge yükle, soru sor; yanıtlar yalnızca belgeden ve kaynak göstererek üretilir." />
+    <meta name="theme-color" content="#131314" />
+    <script>
+      try {
+        const q = new URLSearchParams(location.search).get("theme")
+        document.documentElement.dataset.theme =
+          q || localStorage.getItem("ctx-theme") || "gemlight"
+      } catch (e) {}
+    </script>
+    <title>Contextus — Belge Analiz & Soru-Cevap</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

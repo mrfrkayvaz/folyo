@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: contextus-db
+    environment:
+      POSTGRES_USER: contextus
+      POSTGRES_PASSWORD: contextus
+      POSTGRES_DB: contextus
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contextus -d contextus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  web-api:
+    build: ./web-api
+    container_name: contextus-api
+    ports:
+      - "8000:8000"          # API'ye doğrudan erişim (opsiyonel, debug için)
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ./web-api/.env  # API anahtarların (dosya yoksa compose hatasız çalışır)
+        required: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Frontend build'i (tek seferlik): dist'i web-static volume'üne kopyalar ve çıkar.
+  # Kalıcı bir sunucu değildir; statik dosyaları aşağıdaki caddy servisi sunar.
+  web:
+    build: ./web
+    container_name: contextus-web
+    volumes:
+      - web-static:/srv
+    restart: "no"
+
+  # Ters proxy + statik dosya sunucusu (nginx yerine Caddy).
+  # Yapılandırma ana dizindeki Caddyfile dosyasıdır.
+  caddy:
+    image: caddy:2-alpine
+    container_name: contextus-caddy
+    ports:
+      - "8080:80"            # http://localhost:8080 — SPA statik + /api proxy
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - web-static:/srv:ro
+    depends_on:
+      web-api:
+        condition: service_healthy
+      web:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  web-static:
+  pgdata:
+
+networks:
+  default:
+    name: contextus-net

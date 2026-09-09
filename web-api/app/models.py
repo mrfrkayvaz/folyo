@@ -1,0 +1,105 @@
+"""SQLModel tabloları + enum'lar (Postgres)."""
+
+import enum
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlmodel import Field, SQLModel
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# ── enum'lar ──────────────────────────────────────────────────────────────────
+
+
+class DocumentStatus(str, enum.Enum):
+    uploading = "uploading"      # dosya depoya yazılıyor
+    pending = "pending"          # yüklendi, embedding bekliyor
+    embedding = "embedding"      # embed görevi çalışıyor
+    embedded = "embedded"        # hazır (retrieval kullanabilir)
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class EmbeddingStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class ChatRole(str, enum.Enum):
+    user = "user"
+    assistant = "assistant"
+
+
+# ── tablolar ──────────────────────────────────────────────────────────────────
+
+
+class Workspace(SQLModel, table=True):
+    __tablename__ = "workspaces"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    name: str = Field(default="Yeni sohbet", index=True)
+    created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class Document(SQLModel, table=True):
+    __tablename__ = "documents"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    workspace_id: uuid.UUID = Field(
+        sa_column=Column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    )
+    filename: str = Field(default="")
+    file_type: str = Field(default="")          # uzantı: pdf, txt, md, jpg...
+    size: int = Field(default=0)
+    status: DocumentStatus = Field(
+        default=DocumentStatus.uploading,
+        sa_column=Column(Enum(DocumentStatus, name="document_status"), nullable=False),
+    )
+    chunk_count: int = Field(default=0)
+    error: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class EmbeddingJob(SQLModel, table=True):
+    __tablename__ = "embeddings"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    document_id: uuid.UUID = Field(
+        sa_column=Column(
+            ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+        )
+    )
+    status: EmbeddingStatus = Field(
+        default=EmbeddingStatus.pending,
+        sa_column=Column(Enum(EmbeddingStatus, name="embedding_status"), nullable=False),
+    )
+    chunks: int | None = Field(default=None)
+    dim: int | None = Field(default=None)
+    progress: int = Field(default=0, sa_column=Column(Integer, nullable=False))
+    error: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class ChatMessage(SQLModel, table=True):
+    __tablename__ = "chat_messages"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    workspace_id: uuid.UUID = Field(
+        sa_column=Column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    )
+    role: ChatRole = Field(
+        sa_column=Column(Enum(ChatRole, name="chat_role"), nullable=False),
+    )
+    content: str = Field(default="")
+    citations: list | None = Field(default=None, sa_column=Column(JSONB))
+    created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))

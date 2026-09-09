@@ -1,0 +1,20 @@
+# Contextus — Caddy ters proxy + statik dosya sunucusu
+# docker-compose içindeki "caddy" servisi bu dosyayı mount eder (ana dizinde tutulur).
+# Nginx yerine geçer: hem SPA statik dosyalarını sunar hem de /api isteklerini backend'e yönlendirir.
+
+:80 {
+	# 1) Backend: /api/* → FastAPI (compose servis adı: web-api)
+	handle /api/* {
+		reverse_proxy web-api:8000
+	}
+
+	# 2) Frontend: SPA statik dosyaları (web servisinin doldurduğu web-static volume'ü)
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Yanıtlarda otomatik sıkıştırma
+	encode gzip
+}
