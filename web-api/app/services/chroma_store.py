@@ -1,15 +1,8 @@
-"""ChromaDB vektör deposu (API içinde, kalıcı dizin).
-
-Vektörleri biz üretiriz (OpenRouter embedding) — chroma'nın kendi modelini indirmeyiz.
-Tüm kayıtlarda workspace_id metadata'sı vardır → sorgular her zaman workspace-scope'lu.
-Bloke eden çağrılar anyio.to_thread ile event-loop'u kilitlemez.
-"""
-
 import anyio
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
-from ..config import get_settings
+from ..core.config import get_settings
 
 _client = None
 _collection = None
@@ -29,6 +22,19 @@ def _col():
     return _collection
 
 
+def _reset_collection_sync():
+    global _client, _collection
+    if _client is not None:
+        try:
+            _client.delete_collection("documents")
+        except Exception:
+            pass
+        _collection = _client.get_or_create_collection(
+            "documents",
+            metadata={"hnsw:space": "cosine"},
+        )
+
+
 def _add_sync(workspace_id: str, document_id: str, name: str, chunks: list[str], vectors) -> None:
     ids = [f"{document_id}:{i}" for i in range(len(chunks))]
     metas = [
@@ -40,7 +46,14 @@ def _add_sync(workspace_id: str, document_id: str, name: str, chunks: list[str],
         }
         for i in range(len(chunks))
     ]
-    _col().add(ids=ids, documents=chunks, embeddings=vectors.tolist(), metadatas=metas)
+    try:
+        _col().add(ids=ids, documents=chunks, embeddings=vectors.tolist(), metadatas=metas)
+    except Exception as e:
+        if "dimension" in str(e).lower():
+            _reset_collection_sync()
+            _col().add(ids=ids, documents=chunks, embeddings=vectors.tolist(), metadatas=metas)
+        else:
+            raise e
 
 
 def _delete_doc_sync(document_id: str) -> None:
@@ -52,11 +65,18 @@ def _delete_ws_sync(workspace_id: str) -> None:
 
 
 def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
-    res = _col().query(
-        query_embeddings=[vec.tolist()],
-        n_results=top_k,
-        where={"workspace_id": workspace_id},
-    )
+    try:
+        res = _col().query(
+            query_embeddings=[vec.tolist()],
+            n_results=top_k,
+            where={"workspace_id": workspace_id},
+        )
+    except Exception as e:
+        if "dimension" in str(e).lower():
+            _reset_collection_sync()
+            return []
+        raise e
+
     ids = (res.get("ids") or [[]])[0]
     docs = (res.get("documents") or [[]])[0]
     metas = (res.get("metadatas") or [[]])[0]
@@ -74,9 +94,6 @@ def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
             }
         )
     return out
-
-
-# ── async sarmalayıcılar ──────────────────────────────────────────────────────
 
 
 async def add(workspace_id, document_id, name, chunks, vectors) -> None:

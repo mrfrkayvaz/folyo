@@ -1,6 +1,3 @@
-"""SQLModel tabloları + enum'lar (Postgres)."""
-
-import enum
 import uuid
 from datetime import datetime, timezone
 
@@ -8,44 +5,19 @@ from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
+from .core.constants import DEFAULT_WORKSPACE_NAME
+from .core.enums import ChatRole, DocumentStatus, EmbeddingStatus
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-# ── enum'lar ──────────────────────────────────────────────────────────────────
-
-
-class DocumentStatus(str, enum.Enum):
-    uploading = "uploading"      # dosya depoya yazılıyor
-    pending = "pending"          # yüklendi, embedding bekliyor
-    embedding = "embedding"      # embed görevi çalışıyor
-    embedded = "embedded"        # hazır (retrieval kullanabilir)
-    failed = "failed"
-    cancelled = "cancelled"
-
-
-class EmbeddingStatus(str, enum.Enum):
-    pending = "pending"
-    running = "running"
-    completed = "completed"
-    failed = "failed"
-    cancelled = "cancelled"
-
-
-class ChatRole(str, enum.Enum):
-    user = "user"
-    assistant = "assistant"
-
-
-# ── tablolar ──────────────────────────────────────────────────────────────────
 
 
 class Workspace(SQLModel, table=True):
     __tablename__ = "workspaces"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    name: str = Field(default="Yeni sohbet", index=True)
+    name: str = Field(default=DEFAULT_WORKSPACE_NAME, index=True)
     created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
@@ -57,7 +29,7 @@ class Document(SQLModel, table=True):
         sa_column=Column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     )
     filename: str = Field(default="")
-    file_type: str = Field(default="")          # uzantı: pdf, txt, md, jpg...
+    file_type: str = Field(default="")
     size: int = Field(default=0)
     status: DocumentStatus = Field(
         default=DocumentStatus.uploading,
@@ -103,3 +75,14 @@ class ChatMessage(SQLModel, table=True):
     content: str = Field(default="")
     citations: list | None = Field(default=None, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+__all__ = [
+    "DocumentStatus",
+    "EmbeddingStatus",
+    "ChatRole",
+    "Workspace",
+    "Document",
+    "EmbeddingJob",
+    "ChatMessage",
+]

@@ -1,6 +1,7 @@
-# Contextus — Caddy ters proxy + statik dosya sunucusu
-# docker-compose içindeki "caddy" servisi bu dosyayı mount eder (ana dizinde tutulur).
-# Nginx yerine geçer: hem SPA statik dosyalarını sunar hem de /api isteklerini backend'e yönlendirir.
+# Folyo — Caddy ters proxy (canlı geliştirme)
+# Statik build yok: / → Vite dev server (web:5173), /api → FastAPI (web-api:8000).
+# docker-compose içindeki "caddy" servisi bu dosyayı mount eder.
+# http://localhost:8080 → aynı arayüz; doğrudan http://localhost:5173 da çalışır.
 
 :80 {
 	# 1) Backend: /api/* → FastAPI (compose servis adı: web-api)
@@ -8,13 +9,10 @@
 		reverse_proxy web-api:8000
 	}
 
-	# 2) Frontend: SPA statik dosyaları (web servisinin doldurduğu web-static volume'ü)
+	# 2) Frontend: SPA → Vite dev server (HMR websocket dahil, otomatik)
 	handle {
-		root * /srv
-		try_files {path} /index.html
-		file_server
+		reverse_proxy web:5173
 	}
 
-	# Yanıtlarda otomatik sıkıştırma
 	encode gzip
 }

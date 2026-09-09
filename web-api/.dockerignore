@@ -9,3 +9,5 @@ data
 tests
 .env
 .ragdata
+storage
+chroma_data

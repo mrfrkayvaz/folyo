@@ -29,6 +29,12 @@ export const ArrowUpIcon = (p) => (
   </S>
 )
 
+export const ArrowLeftIcon = (p) => (
+  <S {...p}>
+    <path d="M19 12H5m0 0 7 7m-7-7 7-7" />
+  </S>
+)
+
 export const SunIcon = (p) => (
   <S {...p}>
     <circle cx="12" cy="12" r="4" />

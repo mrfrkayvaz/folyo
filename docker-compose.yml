@@ -1,71 +1,92 @@
+name: folyo
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Folyo — canlı geliştirme stack'i (brüv modeli)
+# Tüm servisler kaynak kodları bind-mount eder ve dev sunucusu olarak çalışır:
+#   · web      → Vite dev server + HMR (kod kaydet → tarayıcı anında yansır)
+#   · web-api  → uvicorn --reload (kod kaydet → otomatik restart)
+# Statik prod build / volume dansı yoktur.
+#
+# Kullanım:
+#   docker compose up -d --build
+#     → http://localhost:5173  (Vite HMR, /api → vite proxy → web-api)
+#     → http://localhost:8080  (Caddy: aynı arayüz, üstten)
+#   Yeni npm paketi:  docker compose up -d --build web
+#   Yeni pip paketi:  docker compose build web-api
+#   .env değişince:   docker compose up -d --force-recreate web-api
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
   db:
     image: postgres:16-alpine
-    container_name: contextus-db
+    container_name: folyo-db
     environment:
-      POSTGRES_USER: contextus
-      POSTGRES_PASSWORD: contextus
-      POSTGRES_DB: contextus
+      POSTGRES_USER: folyo
+      POSTGRES_PASSWORD: folyo
+      POSTGRES_DB: folyo
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U contextus -d contextus"]
+      test: ["CMD-SHELL", "pg_isready -U folyo -d folyo"]
       interval: 5s
       timeout: 3s
       retries: 10
     restart: unless-stopped
 
+  # Backend: kaynak bind-mount + uvicorn --reload → .py kaydet, anında restart
   web-api:
     build: ./web-api
-    container_name: contextus-api
+    container_name: folyo-api
     ports:
-      - "8000:8000"          # API'ye doğrudan erişim (opsiyonel, debug için)
+      - "8000:8000"          # doğrudan erişim (debug için)
     depends_on:
       db:
         condition: service_healthy
     env_file:
-      - path: ./web-api/.env  # API anahtarların (dosya yoksa compose hatasız çalışır)
+      - path: ./web-api/.env  # API anahtarların (yoksa compose hatasız çalışır)
         required: false
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+    environment:
+      # container içi: localhost DEĞİL db servisi (host'taki api localhost kullanır)
+      DATABASE_URL: postgresql+asyncpg://folyo:folyo@db:5432/folyo
+    volumes:
+      - ./web-api/app:/app/app        # canlı kod
+      - ./web-api/chroma_data:/app/chroma_data  # vektör verisi host'ta kalsın
+      - ./web-api/storage:/app/storage          # yüklenen belgeler host'ta kalsın
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     restart: unless-stopped
 
-  # Frontend build'i (tek seferlik): dist'i web-static volume'üne kopyalar ve çıkar.
-  # Kalıcı bir sunucu değildir; statik dosyaları aşağıdaki caddy servisi sunar.
+  # Frontend: Vite dev server — kaynak bind-mount, HMR anında yansır
   web:
-    build: ./web
-    container_name: contextus-web
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    container_name: folyo-web
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_PROXY: http://web-api:8000   # vite proxy hedefi (container içi)
     volumes:
-      - web-static:/srv
-    restart: "no"
+      - ./web/src:/app/src
+      - ./web/public:/app/public
+      - ./web/index.html:/app/index.html
+      - ./web/vite.config.js:/app/vite.config.js
+    depends_on:
+      - web-api
+    restart: unless-stopped
 
-  # Ters proxy + statik dosya sunucusu (nginx yerine Caddy).
-  # Yapılandırma ana dizindeki Caddyfile dosyasıdır.
+  # Ters proxy (opsiyonel): :8080'den aynı arayüze — /api doğrudan backend'e
   caddy:
     image: caddy:2-alpine
-    container_name: contextus-caddy
+    container_name: folyo-caddy
     ports:
-      - "8080:80"            # http://localhost:8080 — SPA statik + /api proxy
+      - "8080:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - web-static:/srv:ro
     depends_on:
-      web-api:
-        condition: service_healthy
-      web:
-        condition: service_completed_successfully
+      - web
     restart: unless-stopped
 
 volumes:
-  web-static:
   pgdata:
-
-networks:
-  default:
-    name: contextus-net

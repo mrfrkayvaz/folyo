@@ -124,19 +124,20 @@
 - **Alternatifler:**_(doldurulacak — örn: bare-metal `uv run` / `npm run dev`)_
 - **Karar tarihi:** 14.09.2026
 
-**Docker akışı:**
-- `docker compose up -d` → `caddy` (ana dizindeki `Caddyfile`) + `web-api` (uv/FastAPI) + `web` (prod build)
-- `caddy` port 8080 → 80; statik dosyaları `web`'in doldurduğu `web-static` volume'ünden sunar; `/api/*` isteklerini `web-api:8000`'e proxy'ler (nginx yerine Caddy — config ana dizindeki `Caddyfile`)
-- `web` → SPA build edip `web-static` volume'üne kopyalar ve çıkar (tek seferlik, kalıcı servis değil)
+**Docker akışı (canlı dev — brüv modeli):**
+- `docker compose up -d --build` → `db` (Postgres) + `web-api` (uv/FastAPI `--reload`) + `web` (Vite dev server + HMR) + `caddy` (opsiyonel :8080 proxy)
+- `web` kaynak kodunu bind-mount eder (src/public/index.html/vite.config); imajdaki `node_modules` canlıdır → dosya kaydet, tarayıcıda anında yansır (build yok)
+- `web-api` kaynağı bind-mount eder + uvicorn `--reload` → `.py` kaydet, otomatik restart; `chroma_data` ve `storage` host'ta kalır
+- `caddy` port 8080 → 80; `/api/*` → `web-api:8000`, geri kalan → `web:5173` (Vite dev; nginx yerine Caddy — config ana dizindeki `Caddyfile`)
 - `web-api` port 8000 (debug için opsiyonel); healthcheck: `GET /api/health`
-- Geliştirme modu: `scripts/dev.sh` → backend `uv run uvicorn --reload` (:8000) + frontend Vite HMR (:5173), `/api` proxy Vite üzerinden. Docker/Caddy yalnız production; HMR yüzünden local'de frontend hiç build edilmez.
+- Alternatif — Docker'sız: `scripts/dev.sh` → backend `uv run uvicorn --reload` (:8000) + frontend Vite HMR (:5173), `/api` proxy Vite üzerinden.
 
 ---
 
 ## 4. Proje Dizin Yapısı (hedef)
 
 ```
-contextus/
+folyo/
 ├── arch.md            ← bu doküman
 ├── DEVLOG.md          ← geliştirme günlüğü (teslimat #1)
 ├── TESTING.md         ← test senaryoları + sonuçlar (teslimat #2)
@@ -145,7 +146,7 @@ contextus/
 ├── web/               ← frontend (React + Vite + Tailwind + daisyUI)
 │   ├── src/
 │   ├── public/
-│   ├── Dockerfile     ← multi-stage: node build → web-static volume'e kopyalar
+│   ├── Dockerfile     ← (artık kullanılmıyor; dev imajı `Dockerfile.dev`)
 │   └── .dockerignore
 ├── web-api/           ← backend API (FastAPI + uv)
 │   ├── app/           ← FastAPI uygulaması
@@ -155,7 +156,7 @@ contextus/
 │   ├── Dockerfile     ← uv tabanlı
 │   └── .dockerignore
 ├── Caddyfile          ← caddy servisi: SPA statik serve + /api proxy (nginx yerine)
-├── docker-compose.yml ← caddy + web + web-api (network: contextus-net)
+├── docker-compose.yml ← caddy + web + web-api (network: folyo-net)
 ├── data/              ← örnek belgeler, test fixture'ları
 ├── scripts/           ← kurulum / demo / test scriptleri
 └── docker/            ← (opsiyonel) container tanımları
@@ -184,7 +185,7 @@ contextus/
 | 14.09.2026 | Web katmanı kararı: `web/` (React+Vite+Tailwind+daisyUI), `web-api/` (FastAPI+uv); klasörler kuruldu |
 | 14.09.2026 | Docker: `docker-compose.yml` — web (nginx:8080, /api proxy) + web-api (:8000, healthcheck); uçtan uca doğrulandı |
 | 09.09.2026 | nginx kaldırıldı → Caddy; `Caddyfile` ana dizinde (tek Caddy: statik serve + /api proxy, web-static volume). `web` tek seferlik build servisi oldu |
-| 09.09.2026 | Local dev akışı netleşti: `scripts/dev.sh` (uvicorn --reload + Vite HMR, Docker'sız); `docker-compose.dev.yml` opsiyonel (backend container'da reload). README.md eklendi |
+| 09.09.2026 | **Canlı dev stack — brüv modeli**: `docker-compose.dev.yml` silindi; tek `docker-compose.yml` → web = Vite dev (bind-mount + HMR, Dockerfile.dev), web-api = uvicorn `--reload` (bind-mount), caddy :8080 proxy → `web:5173`; statik build / `web-static` volume kaldırıldı. Kod düzenle → anında yansır, build gerekmez |
 | 09.09.2026 | **Basit RAG** (web-api): `.env` (gitignore'lu, anahtarlar boş), Nemotron 3 Ultra (streaming) + Nemotron 3 Embed 1B; fazlar `extracting→chunking→embedding→done`; numpy+`.ragdata`; POST/GET/DELETE `/api/documents` (SSE) + POST `/api/qa` (SSE). Sahte OpenAI-uyumlu modelle uçtan uca + restart kalıcılığı doğrulandı; ön yüz gerçek API'ye bağlandı (`lib/api.js`) |
 | 09.09.2026 | Orijinal dosyalar depolanıyor: `.ragdata/files/<doc_id>/<ad>`; chunk'lama depodaki kopyadan; `storing` fazı (UI loading) + `GET /api/documents/{id}/file` indirme; DELETE dosyayı da siler. Doğrulandı |
 | 09.09.2026 | **Workspace mimarisi + Postgres + ChromaDB**: sohbet=workspace (ad ilk mesajdan, 60 karakter); tablolar `workspaces/documents/chat_messages/embeddings` (SQLModel, enum durumlar, CASCADE); vektörler ChromaDB'de (workspace-scope'lu retrieval); dosyalar `storage/<doc_id>/`; stream'li upload (X-Filename, ortası iptal→cancelled) + XHR progress + embedding batch iptal; restart'ta stale'ler failed. Sahte modelle uçtan uca + restart kalıcılığı doğrulandı |

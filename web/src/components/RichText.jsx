@@ -1,9 +1,28 @@
-/* Markdown-lite renderer — stub/API yanıtlarındaki hafif işaretlemeyi JSX'e çevirir.
-   Destek: **kalın**, *italik*, `satır içi kod`, ```kod blokları```, başlıklar, - liste, 1. liste. */
+import CitationBadge from "./CitationBadge.jsx"
+import CodeBlock from "./CodeBlock.jsx"
 
-function inline(text) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g).filter(Boolean)
+function inline(text, onCitationClick) {
+  const parts = text
+    .split(/(\[\s*[^\]]+?\,\s*parça(?:lar)?\b[^\]]*?\]|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/gi)
+    .filter(Boolean)
+
   return parts.map((p, i) => {
+    const citationMatch = p.match(/^\[\s*(.+?)\s*,\s*parça(?:lar)?\s*(.+?)\s*\]$/i)
+    if (citationMatch) {
+      const filename = citationMatch[1].trim()
+      const chunkStr = citationMatch[2]
+      const firstNumMatch = chunkStr.match(/\d+/)
+      const chunkIndex = firstNumMatch ? parseInt(firstNumMatch[0], 10) : 1
+      return (
+        <CitationBadge
+          key={i}
+          label={p.slice(1, -1)}
+          filename={filename}
+          chunkIndex={chunkIndex}
+          onClick={onCitationClick}
+        />
+      )
+    }
     if (p.startsWith("**") && p.endsWith("**") && p.length > 4)
       return <strong key={i}>{p.slice(2, -2)}</strong>
     if (p.startsWith("`") && p.endsWith("`") && p.length > 2)
@@ -40,7 +59,7 @@ function blocksOf(text) {
         code.push(lines[i])
         i++
       }
-      i++ // kapanış satırı
+      i++
       out.push({ type: "code", lang: fence[1], text: code.join("\n") })
       continue
     }
@@ -83,7 +102,7 @@ function blocksOf(text) {
   return out
 }
 
-export default function RichText({ text }) {
+export default function RichText({ text, onCitationClick }) {
   const blocks = blocksOf(text)
   return (
     <div className="space-y-2.5 text-[15px] leading-7 text-base-content/90">
@@ -91,20 +110,20 @@ export default function RichText({ text }) {
         if (b.type === "p")
           return (
             <p key={i} className="whitespace-pre-wrap">
-              {inline(b.text)}
+              {inline(b.text, onCitationClick)}
             </p>
           )
         if (b.type === "h")
           return (
             <p key={i} className="pt-1 text-[16px] font-semibold leading-7 text-base-content">
-              {inline(b.text)}
+              {inline(b.text, onCitationClick)}
             </p>
           )
         if (b.type === "ul")
           return (
             <ul key={i} className="list-disc space-y-1.5 ps-5">
               {b.items.map((it, j) => (
-                <li key={j}>{inline(it)}</li>
+                <li key={j}>{inline(it, onCitationClick)}</li>
               ))}
             </ul>
           )
@@ -112,19 +131,11 @@ export default function RichText({ text }) {
           return (
             <ol key={i} className="list-decimal space-y-1.5 ps-5">
               {b.items.map((it, j) => (
-                <li key={j}>{inline(it)}</li>
+                <li key={j}>{inline(it, onCitationClick)}</li>
               ))}
             </ol>
           )
-        if (b.type === "code")
-          return (
-            <pre
-              key={i}
-              className="overflow-x-auto rounded-2xl border border-base-300 bg-base-300/50 p-3.5 font-mono text-[13px] leading-6"
-            >
-              <code>{b.text}</code>
-            </pre>
-          )
+        if (b.type === "code") return <CodeBlock key={i} text={b.text} lang={b.lang} />
         return null
       })}
     </div>

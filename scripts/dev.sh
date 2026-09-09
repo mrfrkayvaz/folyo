@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Contextus — local geliştirme (Docker/Caddy OLMAZ, anında hot-reload)
+# Folyo — local geliştirme (Docker/Caddy OLMAZ, anında hot-reload)
 # Kullanım: scripts/dev.sh   (Ctrl+C ile ikisi de kapanır)
 #
 #   Backend  → http://localhost:8000  (uvicorn --reload: kaydet → otomatik restart)
 #   Frontend → http://localhost:5173  (Vite HMR: kaydet → tarayıcı anında güncellenir)
 #   /api istekleri Vite proxy ile 8000'e gider (vite.config.js) — CORS derdi yok
 #
-# NOT: Docker build (docker compose up -d --build) SADECE production yayını içindir.
+# NOT: Docker tercih edersen build gerekmez: `docker compose up -d --build`
+#      (docker-compose.yml canlı dev stack: bind-mount + HMR + --reload)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

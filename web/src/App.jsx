@@ -4,23 +4,39 @@ import Sidebar from "./components/Sidebar.jsx"
 import Welcome from "./components/Welcome.jsx"
 import MessageList from "./components/MessageList.jsx"
 import Composer from "./components/Composer.jsx"
-import {
-  askQA,
-  cancelDocument,
-  createWorkspace,
-  deleteWorkspace,
-  documentStatus,
-  getWorkspace,
-  listWorkspaces,
-  uploadDocumentXHR,
-} from "./lib/api.js"
+import FileBar from "./components/FileBar.jsx"
+import ConfirmModal from "./components/ConfirmModal.jsx"
+import FilePreviewModal from "./components/FilePreviewModal.jsx"
+import UploadingState from "./components/UploadingState.jsx"
+import ReadyState from "./components/ReadyState.jsx"
 
-const THEME_KEY = "ctx-theme"
-const WS_KEY = "ctx-workspace"
+import {
+  askQAAction,
+  deleteDocumentAction,
+  getWorkspaceAction,
+  uploadDocumentXHRAction,
+} from "./actions/index.js"
+import { DocumentStatus } from "./enums/index.js"
+import { THEME_KEY } from "./constants/index.js"
+import { useWorkspacesStore } from "./stores/workspacesStore.js"
+
+const ALLOWED_EXTS = /^([^.]+\.)?(pdf|txt|md)$/i
 let idCounter = 0
 const nid = () => `m${++idCounter}`
+let attachKey = 0
+const aid = () => `a${++attachKey}`
 
-const PLACEHOLDER = "Yeni sohbet"
+function terminalPhase(p) {
+  return p === DocumentStatus.EMBEDDED || p === DocumentStatus.FAILED || p === DocumentStatus.CANCELLED
+}
+
+function mapDocPhase(status) {
+  if (status === DocumentStatus.UPLOADING) return DocumentStatus.UPLOADING
+  if (status === DocumentStatus.PENDING || status === DocumentStatus.EMBEDDING) return DocumentStatus.EMBEDDING
+  if (status === DocumentStatus.EMBEDDED) return DocumentStatus.EMBEDDED
+  if (status === DocumentStatus.FAILED) return DocumentStatus.FAILED
+  return DocumentStatus.CANCELLED
+}
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
@@ -31,69 +47,153 @@ export default function App() {
       return "gemlight"
     }
   })
-  const [workspaces, setWorkspaces] = useState([])
-  const [activeId, setActiveId] = useState(null)
+  const ws = useWorkspacesStore()
   const [messages, setMessages] = useState([])
-  const [attach, setAttach] = useState(null) // {file, docId, phase, progress, error}
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [previewAttachment, setPreviewAttachment] = useState(null)
+  const [attachments, setAttachments] = useState([])
   const fileRef = useRef(null)
-  const uploadRef = useRef(null)
+  const uploadHandles = useRef(new Set())
   const pollRef = useRef(null)
+  const pollWidRef = useRef(null)
+  const attachRef = useRef([])
+
+  const inWorkspace = Boolean(ws.activeWorkspaceId || ws.activeWorkspace)
+  const busy = messages.some((m) => m.streaming)
+  const chatStarted = messages.length > 0
+
+  const uploading = attachments.some((a) => a.phase === DocumentStatus.UPLOADING || a.phase === DocumentStatus.EMBEDDING)
+  const doneCount = attachments.filter((a) => a.phase === DocumentStatus.EMBEDDED).length
+  const totalCount = attachments.length
+  const allReady = totalCount > 0 && doneCount === totalCount
+  const showComposer = (totalCount > 0 && !uploading) || chatStarted
+
+  const patchAttach = (key, patch) =>
+    setAttachments((prev) => {
+      const next = prev.map((a) => (a.key === key ? { ...a, ...patch } : a))
+      attachRef.current = next
+      return next
+    })
+
+  const setAttachmentsBoth = (updater) =>
+    setAttachments((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater
+      attachRef.current = next
+      return next
+    })
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     try {
       localStorage.setItem(THEME_KEY, theme)
-    } catch {
-      /* yoksay */
-    }
+    } catch {}
   }, [theme])
 
   useEffect(() => {
+    ws.hydrate()
+
+    const match = window.location.pathname.match(/^\/workspace\/([^/]+)/)
+    if (match) {
+      openWorkspace(match[1], { pushUrl: false })
+    }
+
+    const handlePopState = () => {
+      const m = window.location.pathname.match(/^\/workspace\/([^/]+)/)
+      if (m) {
+        openWorkspace(m[1], { pushUrl: false })
+      } else {
+        newChat({ pushUrl: false })
+      }
+    }
+
+    window.addEventListener("popstate", handlePopState)
+
     return () => {
-      clearTimeout(pollRef.current)
-      uploadRef.current?.abort()
+      window.removeEventListener("popstate", handlePopState)
+      stopStatusPolling()
+      for (const h of uploadHandles.current) h.abort()
+      uploadHandles.current.clear()
     }
   }, [])
 
-  const pushMsg = (m) => setMessages((prev) => [...prev, m])
-  const setMsg = (id, fn) => setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)))
+  const stopStatusPolling = () => {
+    clearInterval(pollRef.current)
+    pollRef.current = null
+    pollWidRef.current = null
+  }
 
-  // ── workspaces ──────────────────────────────────────────────────────────
+  const startStatusPolling = (wid) => {
+    if (pollWidRef.current === wid && pollRef.current) return
+    stopStatusPolling()
+    pollWidRef.current = wid
+    pollRef.current = setInterval(async () => {
+      const widNow = pollWidRef.current
+      if (!widNow) return
+      try {
+        const d = await getWorkspaceAction(widNow)
+        const docs = new Map((d.documents || []).map((x) => [x.id, x]))
+        setAttachments((prev) => {
+          let changed = false
+          const next = prev.map((a) => {
+            if (!a.docId) return a
+            const doc = docs.get(a.docId)
+            if (!doc) return a
+            const phase = mapDocPhase(doc.status)
+            if (phase === a.phase) return a
+            changed = true
+            return { ...a, phase, error: doc.error ?? undefined, progress: undefined }
+          })
+          attachRef.current = changed ? next : prev
+          return changed ? next : prev
+        })
+        if (attachRef.current.every((a) => terminalPhase(a.phase))) stopStatusPolling()
+      } catch {}
+    }, 1500)
+  }
 
-  const loadWorkspaces = async () => {
-    try {
-      const d = await listWorkspaces()
-      setWorkspaces(d.workspaces || [])
-    } catch {
-      /* yoksay */
+  const resetSession = () => {
+    stopStatusPolling()
+    for (const h of uploadHandles.current) h.abort()
+    uploadHandles.current.clear()
+    setAttachmentsBoth([])
+  }
+
+  const newChat = (opts = {}) => {
+    const pushUrl = opts?.pushUrl ?? true
+    if (pushUrl && window.location.pathname !== "/") {
+      window.history.pushState(null, "", "/")
     }
-  }
-
-  useEffect(() => {
-    loadWorkspaces()
-  }, [])
-
-  const ensureWorkspace = async () => {
-    if (activeId) return activeId
-    const d = await createWorkspace()
-    setWorkspaces((prev) => [d, ...prev])
-    setActiveId(d.id)
-    try {
-      localStorage.setItem(WS_KEY, d.id)
-    } catch {}
-    return d.id
-  }
-
-  const openWorkspace = async (id) => {
-    setActiveId(id)
-    try {
-      localStorage.setItem(WS_KEY, id)
-    } catch {}
+    resetSession()
+    ws.goHome()
     setMessages([])
-    setSidebarOpen(false)
+  }
+
+  const openWorkspace = async (id, opts = {}) => {
+    const pushUrl = opts?.pushUrl ?? true
+    if (pushUrl && window.location.pathname !== `/workspace/${id}`) {
+      window.history.pushState(null, "", `/workspace/${id}`)
+    }
+    ws.openWorkspace(id)
+    resetSession()
+    setMessages([])
     try {
-      const d = await getWorkspace(id)
+      const d = await getWorkspaceAction(id)
+      const wObj = d.workspace || d
+      ws.openWorkspace(wObj)
+      const docs = d.documents || []
+      if (docs.length) {
+        setAttachmentsBoth(
+          docs.map((doc) => ({
+            key: aid(),
+            docId: doc.id,
+            filename: doc.filename,
+            size: doc.size,
+            phase: mapDocPhase(doc.status),
+            error: doc.error ?? undefined,
+          })),
+        )
+        if (docs.some((doc) => !terminalPhase(mapDocPhase(doc.status)))) startStatusPolling(id)
+      }
       setMessages(
         (d.messages || []).map((m) => ({
           id: m.id,
@@ -103,63 +203,55 @@ export default function App() {
         })),
       )
     } catch {
-      /* yoksay */
+      window.history.replaceState(null, "", "/")
+      ws.goHome()
     }
   }
 
-  // Kaydedilmiş/ilk workspace'i aç
-  const openedRef = useRef(false)
-  useEffect(() => {
-    if (openedRef.current || workspaces.length === 0 || activeId) return
-    openedRef.current = true
-    let saved = null
-    try {
-      saved = localStorage.getItem(WS_KEY)
-    } catch {}
-    openWorkspace(workspaces.find((w) => w.id === saved)?.id || workspaces[0].id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaces])
-
-  const newChat = async () => {
-    const d = await createWorkspace()
-    setWorkspaces((prev) => [d, ...prev])
-    setActiveId(d.id)
-    setMessages([])
-    try {
-      localStorage.setItem(WS_KEY, d.id)
-    } catch {}
+  const promptDeleteWorkspace = (id) => {
+    const targetWs = ws.workspaces.find((w) => w.id === id)
+    setDeleteTarget({
+      id,
+      name: targetWs?.name || "Bu sohbet",
+    })
   }
 
-  const removeWorkspace = async (id) => {
-    if (!window.confirm("Bu sohbet ve tüm belgeleri silinsin mi?")) return
-    try {
-      await deleteWorkspace(id)
-    } catch {}
-    setWorkspaces((prev) => prev.filter((w) => w.id !== id))
-    if (activeId === id) {
-      setActiveId(null)
-      setMessages([])
-      try {
-        localStorage.removeItem(WS_KEY)
-      } catch {}
+  const confirmDeleteWorkspace = async () => {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
+    setDeleteTarget(null)
+    const wasActive = ws.activeWorkspaceId === id || ws.activeWorkspace?.id === id
+    await ws.removeWorkspace(id)
+    if (wasActive) newChat()
+  }
+
+  const handleCitationClick = ({ filename, chunkIndex }) => {
+    if (!filename) return
+    const targetName = filename.trim().toLowerCase()
+    const found = attachments.find((a) => {
+      const fn = (a.filename || a.file?.name || "").trim().toLowerCase()
+      return fn === targetName || fn.includes(targetName) || targetName.includes(fn)
+    })
+    if (found) {
+      setPreviewAttachment({ ...found, targetChunk: chunkIndex })
     }
   }
-
-  // ── sohbet ──────────────────────────────────────────────────────────────
-
-  const busy = messages.some((m) => m.streaming)
 
   const handleSend = async (rawText) => {
     const q = (rawText || "").trim()
     if (!q || busy) return
-    const wid = await ensureWorkspace()
+    const w = await ws.ensureWorkspace()
+    const wid = w.id
+    if (window.location.pathname !== `/workspace/${wid}`) {
+      window.history.pushState(null, "", `/workspace/${wid}`)
+    }
     pushMsg({ id: nid(), role: "user", text: q })
     const qaId = nid()
     pushMsg({ id: qaId, role: "assistant", text: "", streaming: true })
     let acc = ""
     let sources = null
     try {
-      await askQA(wid, q, {
+      await askQAAction(wid, q, {
         onEvent(event, data) {
           if (event === "meta" && data.sources) sources = data.sources
           else if (event === "delta") {
@@ -175,142 +267,169 @@ export default function App() {
     } catch (err) {
       setMsg(qaId, (m) => ({ ...m, text: `⚠️ Bağlantı hatası: ${err.message}`, streaming: false }))
     }
-    loadWorkspaces()
+    ws.hydrate()
   }
 
-  // ── belge yükleme (seçer seçmez başlar) ────────────────────────────────
+  const pushMsg = (m) => setMessages((prev) => [...prev, m])
+  const setMsg = (id, fn) => setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)))
 
-  const pickFile = async () => {
-    const wid = await ensureWorkspace()
-    if (wid) fileRef.current?.click()
+  const pickFile = () => {
+    if (chatStarted) return
+    fileRef.current?.click()
+  }
+
+  const acceptFiles = (fileList) => {
+    if (chatStarted) return
+    const list = [...(fileList || [])]
+    if (!list.length) return
+    const valid = list.filter((f) => ALLOWED_EXTS.test(f.name))
+    if (!valid.length) {
+      alert("Yalnızca PDF, TXT veya MD dosyaları yüklenebilir.")
+      return
+    }
+    if (valid.length < list.length) alert("Bazı dosyalar desteklenmiyor ve atlandı. (Yalnızca PDF · TXT · MD)")
+    ws.ensureWorkspace().then((w) => {
+      if (window.location.pathname !== `/workspace/${w.id}`) {
+        window.history.pushState(null, "", `/workspace/${w.id}`)
+      }
+      startUploads(w.id, valid)
+    })
   }
 
   const onFilePicked = (e) => {
-    const f = e.target.files?.[0]
-    e.target.value = ""
-    if (!f) return
-    ensureWorkspace().then((wid) => startUpload(wid, f))
+    const input = e.target
+    const files = [...(input.files || [])]
+    input.value = ""
+    if (!files.length) return
+    acceptFiles(files)
   }
 
-  const startUpload = (wid, file) => {
-    uploadRef.current?.abort()
-    clearTimeout(pollRef.current)
-    setAttach({ file, docId: null, phase: "uploading", progress: 0, error: null })
-    const handle = uploadDocumentXHR(wid, file, {
-      onProgress: (p) => setAttach((a) => (a ? { ...a, progress: p } : a)),
+  const handleDropFiles = (files) => {
+    if (!files?.length) return
+    acceptFiles(files)
+  }
+
+  const startUploads = (wid, files) => {
+    const entries = files.map((f) => ({
+      key: aid(),
+      file: f,
+      filename: f.name,
+      size: f.size,
+      docId: null,
+      phase: DocumentStatus.UPLOADING,
+      progress: 0,
+      error: null,
+    }))
+    setAttachmentsBoth((prev) => [...prev, ...entries])
+    for (const entry of entries) launchOne(wid, entry)
+  }
+
+  const launchOne = (wid, entry) => {
+    const handle = uploadDocumentXHRAction(wid, entry.file, {
+      onProgress: (p) => patchAttach(entry.key, { progress: p }),
       onDone: (res) => {
-        if (res.status === "cancelled") {
-          setAttach((a) => (a ? { ...a, phase: "cancelled" } : a))
+        uploadHandles.current.delete(handle)
+        if (res.status === DocumentStatus.CANCELLED) {
+          patchAttach(entry.key, { phase: DocumentStatus.CANCELLED })
           return
         }
-        setAttach((a) => (a ? { ...a, docId: res.id, phase: "embedding", progress: 100 } : a))
-        pollStatus(res.id)
+        patchAttach(entry.key, { docId: res.id, phase: DocumentStatus.EMBEDDING })
+        startStatusPolling(wid)
       },
-      onError: (err) => setAttach((a) => (a ? { ...a, phase: "failed", error: err.message } : a)),
+      onError: (err) => {
+        uploadHandles.current.delete(handle)
+        patchAttach(entry.key, { phase: DocumentStatus.FAILED, error: err.message })
+      },
     })
-    uploadRef.current = handle
+    uploadHandles.current.add(handle)
   }
 
-  const pollStatus = (docId) => {
-    clearTimeout(pollRef.current)
-    const tick = async () => {
-      try {
-        const d = await documentStatus(docId)
-        const emb = d.embed || {}
-        const prog = emb.chunks ? Math.round(((emb.progress || 0) / emb.chunks) * 100) : null
-        if (d.status === "embedded" || emb.status === "completed") {
-          setAttach((a) => (a ? { ...a, phase: "embedded", progress: 100 } : a))
-          return
-        }
-        if (d.status === "failed" || emb.status === "failed") {
-          setAttach((a) => (a ? { ...a, phase: "failed", error: d.error || "embedding başarısız" } : a))
-          return
-        }
-        if (d.status === "cancelled" || emb.status === "cancelled") {
-          setAttach((a) => (a ? { ...a, phase: "cancelled" } : a))
-          return
-        }
-        if (d.status === "pending" || d.status === "embedding") {
-          setAttach((a) => (a ? { ...a, phase: "embedding", progress: prog ?? a.progress } : a))
-        }
-        pollRef.current = setTimeout(tick, 1500)
-      } catch {
-        pollRef.current = setTimeout(tick, 2000)
-      }
-    }
-    pollRef.current = setTimeout(tick, 400)
+  const removeAttachment = (key, docId) => {
+    setAttachmentsBoth((prev) => prev.filter((a) => a.key !== key))
+    if (docId) deleteDocumentAction(docId).catch(() => {})
   }
 
-  const cancelAttach = () => {
-    setAttach((a) => (a ? { ...a, phase: "cancelled" } : a))
-    if (attach?.phase === "uploading") uploadRef.current?.abort()
-    if (attach?.docId) cancelDocument(attach.docId).catch(() => {})
-  }
+  const updCount = attachments.filter((a) => a.phase === DocumentStatus.UPLOADING).length
+  const embCount = attachments.filter((a) => a.phase === DocumentStatus.EMBEDDING).length
+  let statusText = "belgeler hazırlanıyor…"
+  if (updCount && embCount) statusText = `${updCount} dosya yükleniyor · ${embCount} dosya taranıyor`
+  else if (updCount) statusText = `${updCount} dosya yükleniyor…`
+  else if (embCount) statusText = `${embCount} dosya taranıyor ve indeksleniyor…`
+  if (doneCount > 0) statusText = `${doneCount}/${totalCount} hazır · ${statusText}`
 
-  const clearAttach = () => {
-    clearTimeout(pollRef.current)
-    setAttach(null)
-  }
-
-  // ── görünüm ─────────────────────────────────────────────────────────────
-
-  const sidebar = (
-    <Sidebar
-      workspaces={workspaces}
-      activeId={activeId}
-      onSelect={openWorkspace}
-      onNew={newChat}
-      onDelete={removeWorkspace}
-    />
-  )
+  const chatTitle = ws.activeWorkspace?.name?.trim() || (inWorkspace ? "Yeni sohbet" : "")
 
   return (
-    <div className="flex h-dvh flex-col bg-base-100 text-base-content">
-      <Header theme={theme} onToggleTheme={toggleTheme} onMenu={() => setSidebarOpen(true)} />
+    <div className="flex h-dvh bg-base-100 text-base-content">
+      <Sidebar
+        workspaces={ws.workspaces}
+        activeId={ws.activeWorkspaceId ?? ws.activeWorkspace?.id ?? null}
+        onSelect={openWorkspace}
+        onNew={newChat}
+        onDelete={promptDeleteWorkspace}
+      />
 
-      <div className="flex min-h-0 flex-1">
-        <div className="hidden w-72 shrink-0 border-r border-base-300/40 md:block">{sidebar}</div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header
+          theme={theme}
+          onToggleTheme={() => setTheme((t) => (t === "gemdark" ? "gemlight" : "gemdark"))}
+          onBack={inWorkspace ? newChat : undefined}
+          title={chatTitle}
+        />
 
-        {sidebarOpen && (
-          <div className="fixed inset-0 z-40 md:hidden">
-            <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
-            <div className="absolute inset-y-0 left-0 w-80 bg-base-100 shadow-2xl">{sidebar}</div>
-          </div>
+        {attachments.length > 0 && (
+          <FileBar attachments={attachments} onRemove={removeAttachment} onPreview={setPreviewAttachment} />
         )}
 
         <main className="ctx-scroll min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 sm:px-6">
-            {messages.length === 0 ? (
-              <Welcome onPickFile={pickFile} onSuggestion={handleSend} />
+            {uploading && messages.length === 0 ? (
+              <UploadingState statusText={statusText} />
+            ) : messages.length > 0 ? (
+              <MessageList messages={messages} onCitationClick={handleCitationClick} />
+            ) : allReady ? (
+              <ReadyState totalCount={totalCount} />
             ) : (
-              <MessageList messages={messages} />
+              <Welcome onPickFile={pickFile} onDropFiles={handleDropFiles} />
             )}
           </div>
         </main>
-      </div>
 
-      <footer className="px-4 pb-4 pt-1 sm:px-6">
-        <Composer
-          attach={attach}
-          onCancelAttach={cancelAttach}
-          onClearAttach={clearAttach}
-          onPickFile={pickFile}
-          onSend={handleSend}
-          busy={busy}
+        {showComposer && (
+          <footer className="flex justify-center px-4 pb-4 pt-1 sm:px-6">
+            <Composer onSend={handleSend} busy={busy} />
+          </footer>
+        )}
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.txt,.md"
+          multiple
+          className="hidden"
+          onChange={onFilePicked}
         />
-      </footer>
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.webp"
-        className="hidden"
-        onChange={onFilePicked}
-      />
+        <ConfirmModal
+          isOpen={Boolean(deleteTarget)}
+          title="Sohbeti Sil"
+          description={
+            deleteTarget
+              ? `"${deleteTarget.name}" başlıklı sohbet ve yüklenen tüm belgeler silinecektir. Bu işlem geri alınamaz.`
+              : ""
+          }
+          confirmText="Sil"
+          cancelText="Vazgeç"
+          variant="danger"
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={confirmDeleteWorkspace}
+        />
+
+        <FilePreviewModal
+          attachment={previewAttachment}
+          onClose={() => setPreviewAttachment(null)}
+        />
+      </div>
     </div>
   )
-
-  function toggleTheme() {
-    setTheme((t) => (t === "gemdark" ? "gemlight" : "gemdark"))
-  }
 }

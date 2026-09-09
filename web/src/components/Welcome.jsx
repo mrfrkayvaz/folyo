@@ -1,83 +1,81 @@
-import Avatar from "./Avatar.jsx"
-import { DocIcon, LangIcon, PlusIcon, ShieldIcon } from "./icons.jsx"
+import { useRef, useState } from "react"
+import { DocIcon } from "./icons.jsx"
 
-const TILES = [
-  { key: "upload", kind: "file", icon: PlusIcon, title: "Belge yükle", desc: "PDF · JPG · PNG — dosya seç" },
-  {
-    key: "how",
-    kind: "prompt",
-    icon: DocIcon,
-    title: "Nasıl çalışıyor?",
-    desc: "OCR, dizinleme ve kaynak gösterimi",
-    prompt: "Bu uygulama nasıl çalışıyor? Kısaca anlatır mısın?",
-  },
-  {
-    key: "lang",
-    kind: "prompt",
-    icon: LangIcon,
-    title: "Hangi diller?",
-    desc: "Türkçe ve İngilizce belgeler",
-    prompt: "Hangi dillerdeki belgeleri işleyebiliyorsunuz?",
-  },
-  {
-    key: "trust",
-    kind: "prompt",
-    icon: ShieldIcon,
-    title: "Doğruluk garantisi",
-    desc: "Belgede olmayan bilgi üretilmez",
-    prompt: "Yanıtların belge dışına çıkmamasını nasıl sağlıyorsunuz?",
-  },
-]
+export default function Welcome({ onPickFile, onDropFiles }) {
+  const [dragging, setDragging] = useState(false)
+  const dragDepth = useRef(0) // alt elemanlar üzerinde gezinirken flicker'ı önler
 
-export default function Welcome({ onPickFile, onSuggestion }) {
+  const handleDragEnter = (e) => {
+    e.preventDefault()
+    dragDepth.current += 1
+    setDragging(true)
+  }
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    dragDepth.current -= 1
+    if (dragDepth.current <= 0) {
+      dragDepth.current = 0
+      setDragging(false)
+    }
+  }
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "copy"
+  }
+  const handleDrop = (e) => {
+    e.preventDefault()
+    dragDepth.current = 0
+    setDragging(false)
+    const files = e.dataTransfer?.files
+    if (files?.length) onDropFiles(files)
+  }
+
   return (
     <section className="flex flex-1 flex-col items-center justify-center px-1 py-12 text-center">
       <div className="ctx-rise flex flex-col items-center gap-4">
-        <Avatar size="h-14 w-14 text-xl" />
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-          <span className="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-            Contextus
-          </span>
-        </h1>
+        <img src="/logo.svg" alt="Folyo" className="h-16 w-16 drop-shadow-lg sm:h-20 sm:w-20" />
+        <h1 className="text-4xl font-semibold tracking-tight text-primary sm:text-5xl">Folyo</h1>
         <p className="max-w-xl text-base leading-7 text-base-content/70 sm:text-lg sm:leading-8">
-          Bir belge yükleyin (PDF, JPG, PNG), içeriği hakkında soru sorun.
+          Bir belge yükleyin (PDF, TXT, MD), içeriği hakkında soru sorun.
           Yanıtlar yalnızca belgeden, kaynak göstererek üretilir.
         </p>
       </div>
 
-      <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
-        {TILES.map((t) => {
-          const Icon = t.icon
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => (t.kind === "file" ? onPickFile() : onSuggestion(t.prompt))}
-              className={`group flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
-                t.kind === "file"
-                  ? "border-primary/30 bg-primary/5 hover:border-primary/50 hover:bg-primary/10"
-                  : "border-base-300 bg-base-100 hover:border-base-content/25 hover:bg-base-200"
-              }`}
-            >
-              <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                  t.kind === "file" ? "bg-primary/15 text-primary" : "bg-base-200 text-base-content/70 group-hover:bg-base-300"
-                }`}
-              >
-                <Icon className="h-5 w-5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-medium">{t.title}</span>
-                <span className="block text-xs leading-5 text-base-content/50">{t.desc}</span>
-              </span>
-            </button>
-          )
-        })}
+      <div className="mt-10 w-full max-w-2xl">
+        <button
+          type="button"
+          onClick={onPickFile}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`group flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed px-6 py-14 text-center transition sm:py-16 ${
+            dragging
+              ? "scale-[1.01] border-primary bg-primary/10"
+              : "border-base-300 bg-base-100 hover:border-primary/60 hover:bg-base-200/60"
+          }`}
+        >
+          <span
+            className={`flex h-14 w-14 items-center justify-center rounded-2xl transition ${
+              dragging
+                ? "bg-primary/20 text-primary"
+                : "bg-base-200 text-base-content/60 group-hover:bg-primary/10 group-hover:text-primary"
+            }`}
+          >
+            <DocIcon className="h-7 w-7" />
+          </span>
+          <span className="text-base font-medium text-base-content/80">
+            {dragging ? "Bırak ve yükle" : "Belgeyi buraya sürükle"}
+          </span>
+          <span className="text-sm text-base-content/50">
+            veya{" "}
+            <span className="font-medium text-primary underline underline-offset-2">
+              dosya seçmek için tıkla
+            </span>
+          </span>
+          <span className="mt-1 text-xs text-base-content/40">PDF · TXT · MD — resimler kabul edilmez</span>
+        </button>
       </div>
-
-      <p className="mt-10 max-w-md text-xs leading-5 text-base-content/40">
-        Türkçe / İngilizce OCR · semantik arama · hallucination guard
-      </p>
     </section>
   )
 }

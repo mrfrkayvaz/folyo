@@ -1,16 +1,26 @@
 ### 07.09.2026
 
-
-
 ### 08.09.2026
 
 ### 09.09.2026
-- nginx kaldırıldı → Caddy; `Caddyfile` ana dizinde (statik serve + `/api` proxy). `web` tek seferlik build servisi (`web-static` volume), `caddy` 8080'de. Doğrulandı.
-- Local dev: `scripts/dev.sh` (uvicorn `--reload` + Vite HMR, Docker'sız) + opsiyonel `docker-compose.dev.yml`; README.md eklendi
-- Frontend UI: Gemini tarzı ana sayfa (daisyUI, özel gemlight/gemdark temalar). Header, Welcome (öneri karoları), MessageList (markdown-lite + kaynak/guard çipleri), Composer (dosya ekleme + otomatik büyüyen giriş). `/api/qa` stub'ı `src/lib/chat.js`'te. Build + SSR + headless-chrome ile doğrulandı
-- **Basit RAG** (web-api): `.env` (gitignore'lu, anahtarlar boş), Nemotron 3 Ultra streaming + Nemotron 3 Embed 1B; fazlar `extracting→chunking→embedding→done`; numpy+`.ragdata` vektör saklama; uçlar `POST /api/documents` (SSE), `GET/DELETE /api/documents`, `POST /api/qa` (SSE). Sahte modelle uçtan uca + restart kalıcılığı doğrulandı; ön yüz gerçek API'ye bağlandı (`lib/api.js`)
-- Orijinal dosyalar depoda: `.ragdata/files/<doc_id>/<ad>`; chunk'lar depodaki kopyadan; `storing` fazı (UI loading) + `GET /api/documents/{id}/file` indirme
-- **Workspace mimarisi**: sohbet=workspace; Postgres (`db` servisi) + SQLModel (workspaces/documents/chat_messages/embeddings, enum+migration'sız create_all); vektörler ChromaDB (`chroma_data/`, workspace-scope'lu); dosyalar `storage/<doc_id>/`; stream'li upload + XHR percent progress + çift aşamalı iptal; auto-title (ilk 60 karakter); restart stale→failed. Fake model e2e doğrulandı
+
+pdflerin birbirine karışmaması için workspace mantığı kurguladım.
+
+yüklenen belgeler ilgili workspacelere workspace_id üzerinden bağlanıyor.
+
+belge yüklendiğinde önce documents tablosuna belge kaydını yapıyor ve yüklendiği anda embedding işlemine gönderiliyor. süreç ön yüzden böylelikle takip edilebiliyor. belgeler yüklenene kadar soru sormaya izin verilmiyor. belgeler yüklendiğinde de input artık aktif hale geliyor.
+
+pdf önizlemesinde ilgili yeri vurgulamayı denedim ama tam olarak ilgili yeri vurgulamayı başaramadım. farklı bir strateji deneyeceğim.
+
+prompt sayesinde halusinasyon görmüyor.
+örneğin;
+türkiye'nin başkenti neresidir? diye sorduğumda bu belgede ilgili ifadenin olmadığını belirtti.
+
+hem api tarafının hem de fronend tarafının kodlarını ai yardımıyla düzenledim. constants, types, enums gibi yapıları ortak kullanım sağlayabilmek için kendi dosyaları içerisine çektim.
+
+uzun dosyaların oluşmaması ve tekrarlı kullanımı sağlayabilmek için iki tarafta da component yapısı uyguladım. tekrar kullanabileceğim her yeri component haline getirdim.
+
+rag sisteminden top_k=6 şeklinde ifade dönüyordu. burada belgeyle ilgili olmayan bir şey sorduğumda belgeyle ilgisinin olmadığını tespit edebilmesine rağmen en alakalı 6 chunkı döndürdüğü için ön yüzde yararlanılan parça sayısına 6 yazıyordu. bu nedenle threshold ekledim. yani gelen chunklar bu thresholdun altında kalıyorsa değerlendirmeye dahil edilmiyor artık. bu hem llm'e gönderilen veri miktarını azalttığı için maliyet optimizasyonu ve hız sağlıyor hem de ön yüzde yararlanılan parça sayısını yanlış göstermemiş oluyor.
 
 ### 10.09.2026
 
@@ -21,4 +31,3 @@
 ### 13.09.2026
 
 ### 14.09.2026
-

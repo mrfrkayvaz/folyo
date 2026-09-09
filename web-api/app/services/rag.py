@@ -1,40 +1,31 @@
-"""Retrieval + üretim hattı: workspace-scope'lu chroma sorgusu + streaming LLM.
-
-Olay sözlükleri:
-  {"type":"meta","sources":[{label,meta}]}  → başlangıçta kaynaklar
-  {"type":"delta","text":...}               → token token içerik
-  {"type":"done","sources":[...]}
-  {"type":"error","message":...}
-"""
-
 import asyncio
 import uuid
 
-from ..config import get_settings
+from ..core.config import get_settings
+from ..core.constants import ERROR_NO_EMBEDDED_DOCS, ERROR_NO_SIMILAR_CONTEXT
 from . import chroma_store, embeddings, llm
 
 
 async def qa_events(workspace_id: uuid.UUID, question: str):
     settings = get_settings()
 
-    # 1) Soruyu vektöre çevir
     try:
         qvec = (await embeddings.embed_texts([question]))[0]
     except Exception as exc:
         yield {"type": "error", "message": f"Embedding hatası: {exc}"}
         return
 
-    # 2) SADECE bu workspace'in belgelerinde ara
-    hits = await chroma_store.query(workspace_id, qvec, settings.top_k)
-    if not hits:
-        yield {
-            "type": "error",
-            "message": "Bu sohbette henüz embedlenmiş belge yok. Bir belge yükleyip "
-            "dizinlemenin bitmesini bekleyin, sonra sorunuzu sorun.",
-        }
+    raw_hits = await chroma_store.query(workspace_id, qvec, settings.top_k)
+    if not raw_hits:
+        yield {"type": "error", "message": ERROR_NO_EMBEDDED_DOCS}
         return
 
-    # 3) Kaynak özeti (benzersiz belgeler + kaç parça)
+    threshold = settings.similarity_threshold
+    hits = [h for h in raw_hits if h.get("score", 0.0) >= threshold]
+    if not hits:
+        yield {"type": "error", "message": ERROR_NO_SIMILAR_CONTEXT}
+        return
+
     seen: dict[str, int] = {}
     order: list[str] = []
     for h in hits:
@@ -42,13 +33,13 @@ async def qa_events(workspace_id: uuid.UUID, question: str):
             seen[h["doc_id"]] = 0
             order.append(h["doc_id"])
         seen[h["doc_id"]] += 1
+
     sources = [
         {"label": next(h["name"] for h in hits if h["doc_id"] == d), "meta": f"{seen[d]} parça"}
         for d in order
     ]
     yield {"type": "meta", "sources": sources}
 
-    # 4) LLM'i token token akıt (kuyruk üzerinden)
     q: asyncio.Queue = asyncio.Queue()
 
     async def runner() -> None:
