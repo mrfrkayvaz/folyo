@@ -7,7 +7,7 @@ export default function ReadyState({ totalCount }) {
         <ShieldIcon className="h-7 w-7" />
       </span>
       <p className="text-base font-medium text-base-content/80">
-        {totalCount} belge hazır — soru sormaya başlayabilirsin
+        {totalCount} belge işlendi — soru sormaya başlayabilirsin
       </p>
       <p className="text-xs text-base-content/40">Yanıtlar ✓ yalnızca bu belgelerin kaynağından üretilir.</p>
     </div>

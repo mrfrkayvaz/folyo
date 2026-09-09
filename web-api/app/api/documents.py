@@ -141,6 +141,7 @@ async def delete_document(did: uuid.UUID):
             raise HTTPException(404, "Belge bulunamadı.")
         await s.delete(d)
         await s.commit()
+    jobs.request_cancel(str(did))
     shutil.rmtree(storage_dir(did), ignore_errors=True)
     await chroma_store.delete_document(did)
     return {"deleted": True}

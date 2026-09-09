@@ -40,7 +40,7 @@ export default function FileBar({ attachments, onRemove, onPreview }) {
                     <span>taranıyor %{a.progress ?? "…"}</span>
                   </>
                 )}
-                {a.phase === DocumentStatus.EMBEDDED && <span className="text-success">✓ hazır</span>}
+                {a.phase === DocumentStatus.EMBEDDED && <span className="text-success">✓ işlendi</span>}
                 {err && <span className="text-error">{a.error || "işlenemedi"}</span>}
                 {a.phase === DocumentStatus.CANCELLED && <span className="text-base-content/45">iptal</span>}
               </span>

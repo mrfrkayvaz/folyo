@@ -63,10 +63,11 @@ export default function App() {
   const chatStarted = messages.length > 0
 
   const uploading = attachments.some((a) => a.phase === DocumentStatus.UPLOADING || a.phase === DocumentStatus.EMBEDDING)
+  const hasFailed = attachments.some((a) => a.phase === DocumentStatus.FAILED)
   const doneCount = attachments.filter((a) => a.phase === DocumentStatus.EMBEDDED).length
   const totalCount = attachments.length
   const allReady = totalCount > 0 && doneCount === totalCount
-  const showComposer = (totalCount > 0 && !uploading) || chatStarted
+  const showComposer = !hasFailed && ((totalCount > 0 && !uploading) || chatStarted)
 
   const patchAttach = (key, patch) =>
     setAttachments((prev) => {
@@ -355,7 +356,7 @@ export default function App() {
   if (updCount && embCount) statusText = `${updCount} dosya yükleniyor · ${embCount} dosya taranıyor`
   else if (updCount) statusText = `${updCount} dosya yükleniyor…`
   else if (embCount) statusText = `${embCount} dosya taranıyor ve indeksleniyor…`
-  if (doneCount > 0) statusText = `${doneCount}/${totalCount} hazır · ${statusText}`
+  if (doneCount > 0) statusText = `${doneCount}/${totalCount} işlendi · ${statusText}`
 
   const chatTitle = ws.activeWorkspace?.name?.trim() || (inWorkspace ? "Yeni sohbet" : "")
 

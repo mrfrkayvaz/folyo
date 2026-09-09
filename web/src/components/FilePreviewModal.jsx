@@ -93,7 +93,7 @@ export default function FilePreviewModal({ attachment, onClose }) {
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
 
       {/* Önizleme Modal Kartı */}
-      <div className="relative z-10 flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-base-300 bg-base-100 shadow-2xl overflow-hidden">
+      <div className="relative z-10 flex min-h-[300px] max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-base-300 bg-base-100 shadow-2xl overflow-hidden">
         {/* Üst Başlık Barı */}
         <div className="flex items-center justify-between px-4 py-3 sm:px-6 border-b border-base-200">
           <div className="flex items-center gap-2.5 min-w-0 pr-4">
@@ -124,24 +124,24 @@ export default function FilePreviewModal({ attachment, onClose }) {
         </div>
 
         {/* Gövde / İçerik Alanı */}
-        <div className="flex-1 overflow-y-auto p-0 flex flex-col">
+        <div className="flex-1 min-h-[300px] overflow-y-auto p-0 flex flex-col">
           {loading ? (
-            <div className="flex h-64 flex-col items-center justify-center gap-3 text-center p-4 sm:p-6">
+            <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-center p-4 sm:p-6">
               <span className="loading loading-spinner loading-md text-primary" />
               <p className="text-xs text-base-content/50">Dosya yükleniyor…</p>
             </div>
           ) : error ? (
-            <div className="flex h-64 flex-col items-center justify-center gap-2 text-center text-error p-4 sm:p-6">
+            <div className="flex min-h-[300px] flex-col items-center justify-center gap-2 text-center text-error p-4 sm:p-6">
               <p className="text-sm font-medium">⚠️ {error}</p>
             </div>
           ) : isPdf && pdfUrl ? (
             <iframe
               src={pdfUrl}
-              className="h-[75vh] w-full border-0 bg-base-200 block"
+              className="h-[75vh] min-h-[300px] w-full border-0 bg-base-200 block"
               title={filename}
             />
           ) : (
-            <pre className="whitespace-pre-wrap break-words font-mono text-xs sm:text-sm leading-relaxed text-base-content/90 bg-base-200/50 p-4 sm:p-6 overflow-x-auto border-0 rounded-none m-0">
+            <pre className="min-h-[300px] flex-1 whitespace-pre-wrap break-words font-mono text-xs sm:text-sm leading-relaxed text-base-content/90 bg-base-200/50 p-4 sm:p-6 overflow-x-auto border-0 rounded-none m-0">
               {content}
             </pre>
           )}

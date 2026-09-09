@@ -12,6 +12,12 @@ export default function Composer({ onSend, busy }) {
     ta.style.height = Math.min(ta.scrollHeight, 220) + "px"
   }, [text])
 
+  useEffect(() => {
+    if (!busy) {
+      taRef.current?.focus()
+    }
+  }, [busy])
+
   const canSend = !busy && text.trim()
   const submit = () => {
     if (!canSend) return
@@ -28,7 +34,7 @@ export default function Composer({ onSend, busy }) {
         submit()
       }}
     >
-      <div className="flex items-center gap-1 rounded-full border border-base-300 bg-base-200 p-1.5 shadow-sm transition focus-within:border-primary/50">
+      <div className="flex items-center gap-1 rounded-full border border-base-300 bg-base-200 p-1.5 transition focus-within:border-primary/50">
         <textarea
           ref={taRef}
           rows={1}

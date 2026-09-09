@@ -4,35 +4,41 @@ from chromadb.config import Settings as ChromaSettings
 
 from ..core.config import get_settings
 
+import threading
+
 _client = None
 _collection = None
+_lock = threading.Lock()
 
 
 def _col():
     global _client, _collection
     if _collection is None:
-        _client = chromadb.PersistentClient(
-            path=get_settings().chroma_dir,
-            settings=ChromaSettings(anonymized_telemetry=False),
-        )
-        _collection = _client.get_or_create_collection(
-            "documents",
-            metadata={"hnsw:space": "cosine"},
-        )
+        with _lock:
+            if _collection is None:
+                _client = chromadb.PersistentClient(
+                    path=get_settings().chroma_dir,
+                    settings=ChromaSettings(anonymized_telemetry=False),
+                )
+                _collection = _client.get_or_create_collection(
+                    "documents",
+                    metadata={"hnsw:space": "cosine"},
+                )
     return _collection
 
 
 def _reset_collection_sync():
     global _client, _collection
-    if _client is not None:
-        try:
-            _client.delete_collection("documents")
-        except Exception:
-            pass
-        _collection = _client.get_or_create_collection(
-            "documents",
-            metadata={"hnsw:space": "cosine"},
-        )
+    with _lock:
+        if _client is not None:
+            try:
+                _client.delete_collection("documents")
+            except Exception:
+                pass
+            _collection = _client.get_or_create_collection(
+                "documents",
+                metadata={"hnsw:space": "cosine"},
+            )
 
 
 def _add_sync(workspace_id: str, document_id: str, name: str, chunks: list[str], vectors) -> None:

@@ -69,7 +69,9 @@ async def embed_texts(texts: list[str], progress=None) -> np.ndarray:
             for item in data:
                 vectors.append(item["embedding"])
             if progress:
-                progress(start + len(data))
+                res = progress(start + len(data))
+                if asyncio.iscoroutine(res):
+                    await res
 
     if not vectors:
         raise AIError("Embedding servisi boş yanıt döndü.")
