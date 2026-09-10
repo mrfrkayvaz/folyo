@@ -3,21 +3,24 @@ import CodeBlock from "./CodeBlock.jsx"
 
 function inline(text, onCitationClick) {
   const parts = text
-    .split(/(\[\s*[^\]]+?\,\s*parça(?:lar)?\b[^\]]*?\]|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/gi)
+    .split(/(\[\s*[^\]]*?parça(?:lar)?\b[^\]]*?\]|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/gi)
     .filter(Boolean)
 
   return parts.map((p, i) => {
-    const citationMatch = p.match(/^\[\s*(.+?)\s*,\s*parça(?:lar)?\s*(.+?)\s*\]$/i)
+    const citationMatch = p.match(
+      /^\[\s*(.+?)\s*,\s*(?:sayfa\s*(\d+)\s*,\s*)?parça(?:lar)?\s*([^\]]+?)\s*\]$/i,
+    )
     if (citationMatch) {
       const filename = citationMatch[1].trim()
-      const chunkStr = citationMatch[2]
-      const firstNumMatch = chunkStr.match(/\d+/)
+      const pageNumber = citationMatch[2] ? parseInt(citationMatch[2], 10) : null
+      const firstNumMatch = citationMatch[3].match(/\d+/)
       const chunkIndex = firstNumMatch ? parseInt(firstNumMatch[0], 10) : 1
       return (
         <CitationBadge
           key={i}
           label={p.slice(1, -1)}
           filename={filename}
+          pageNumber={pageNumber}
           chunkIndex={chunkIndex}
           onClick={onCitationClick}
         />

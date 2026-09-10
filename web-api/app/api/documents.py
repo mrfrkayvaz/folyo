@@ -11,7 +11,7 @@ from sqlmodel import select as sm_select
 from ..core.constants import MAX_UPLOAD_SIZE
 from ..core.database import get_factory
 from ..core.enums import DocumentStatus
-from ..models import Document, EmbeddingJob, Workspace
+from ..models import Document, DocumentQuestion, EmbeddingJob, Workspace
 from ..services import chroma_store, jobs
 from ..services.jobs import storage_dir
 
@@ -92,12 +92,22 @@ async def document_status(did: uuid.UUID):
         if not d:
             raise HTTPException(404, "Belge bulunamadı.")
         job = await s.get(EmbeddingJob, did)
+        qs = (
+            await s.execute(
+                sm_select(DocumentQuestion)
+                .where(DocumentQuestion.document_id == did)
+                .order_by(DocumentQuestion.position)
+            )
+        ).scalars().all()
     return {
         "id": str(d.id),
         "filename": d.filename,
         "status": d.status.value,
         "chunk_count": d.chunk_count,
         "error": d.error,
+        "summary": d.summary,
+        "stats": d.stats,
+        "starter_questions": [q.question for q in qs],
         "embed": {
             "status": job.status.value if job else None,
             "chunks": job.chunks if job else None,

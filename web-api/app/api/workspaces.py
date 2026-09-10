@@ -6,7 +6,7 @@ from sqlmodel import select as sm_select
 
 from ..core.constants import DEFAULT_WORKSPACE_NAME
 from ..core.database import get_factory
-from ..models import ChatMessage, Document, Workspace
+from ..models import ChatMessage, Document, DocumentQuestion, Workspace
 from ..schemas.workspace import WorkspaceCreate
 from ..services import chroma_store
 from ..services.jobs import storage_dir
@@ -64,6 +64,18 @@ async def get_workspace(wid: uuid.UUID):
             )
         ).scalars().all()
         docs = (await s.execute(sm_select(Document).where(Document.workspace_id == wid))).scalars().all()
+        q_questions = []
+        if docs:
+            q_questions = (
+                await s.execute(
+                    sm_select(DocumentQuestion)
+                    .where(DocumentQuestion.document_id.in_([d.id for d in docs]))
+                    .order_by(DocumentQuestion.position)
+                )
+            ).scalars().all()
+        q_by_doc: dict[uuid.UUID, list[str]] = {}
+        for q in q_questions:
+            q_by_doc.setdefault(q.document_id, []).append(q.question)
     return {
         "workspace": {"id": str(ws.id), "name": ws.name, "created_at": ws.created_at.isoformat()},
         "messages": [
@@ -85,6 +97,9 @@ async def get_workspace(wid: uuid.UUID):
                 "status": d.status.value,
                 "chunk_count": d.chunk_count,
                 "error": d.error,
+                "summary": d.summary,
+                "stats": d.stats,
+                "starter_questions": q_by_doc.get(d.id, []),
             }
             for d in docs
         ],

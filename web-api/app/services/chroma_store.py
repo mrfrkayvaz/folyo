@@ -1,10 +1,13 @@
+import json
+import threading
+
 import anyio
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from ..core.config import get_settings
-
-import threading
+from . import bm25_index
+from .types import Chunk
 
 _client = None
 _collection = None
@@ -41,33 +44,49 @@ def _reset_collection_sync():
             )
 
 
-def _add_sync(workspace_id: str, document_id: str, name: str, chunks: list[str], vectors) -> None:
-    ids = [f"{document_id}:{i}" for i in range(len(chunks))]
-    metas = [
-        {
-            "workspace_id": workspace_id,
-            "document_id": document_id,
-            "doc_index": i,
-            "name": name,
-        }
-        for i in range(len(chunks))
-    ]
+def _meta(workspace_id: str, document_id: str, name: str, c: Chunk) -> dict:
+    return {
+        "workspace_id": workspace_id,
+        "document_id": document_id,
+        "name": name,
+        "page_number": int(c.page_number),
+        "chunk_index": int(c.chunk_index),
+        "content_type": c.content_type,
+        "page_context": c.page_context,
+        "bbox": json.dumps(c.bbox),
+    }
+
+
+def _add_sync(workspace_id: str, document_id: str, name: str, chunks: list[Chunk], vectors) -> None:
+    ids = [f"{document_id}:{c.chunk_index}" for c in chunks]
+    documents = [c.text for c in chunks]
+    metas = [_meta(workspace_id, document_id, name, c) for c in chunks]
     try:
-        _col().add(ids=ids, documents=chunks, embeddings=vectors.tolist(), metadatas=metas)
+        _col().add(ids=ids, documents=documents, embeddings=vectors.tolist(), metadatas=metas)
     except Exception as e:
         if "dimension" in str(e).lower():
             _reset_collection_sync()
-            _col().add(ids=ids, documents=chunks, embeddings=vectors.tolist(), metadatas=metas)
+            _col().add(ids=ids, documents=documents, embeddings=vectors.tolist(), metadatas=metas)
         else:
             raise e
+    bm25_index.invalidate(workspace_id)
 
 
 def _delete_doc_sync(document_id: str) -> None:
+    try:
+        res = _col().get(where={"document_id": document_id}, include=["metadatas"])
+        metas = res.get("metadatas") or []
+        ws_id = (metas[0] or {}).get("workspace_id") if metas else None
+    except Exception:
+        ws_id = None
     _col().delete(where={"document_id": document_id})
+    if ws_id:
+        bm25_index.invalidate(ws_id)
 
 
 def _delete_ws_sync(workspace_id: str) -> None:
     _col().delete(where={"workspace_id": workspace_id})
+    bm25_index.invalidate(workspace_id)
 
 
 def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
@@ -90,10 +109,18 @@ def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
     out = []
     for i in range(len(ids)):
         meta = metas[i] or {}
+        try:
+            bbox = json.loads(meta.get("bbox") or "[]")
+        except json.JSONDecodeError:
+            bbox = []
         out.append(
             {
                 "doc_id": meta.get("document_id", ""),
-                "doc_index": int(meta.get("doc_index", 0)),
+                "chunk_index": int(meta.get("chunk_index", 0)),
+                "page_number": int(meta.get("page_number", 1)),
+                "content_type": meta.get("content_type", "text"),
+                "page_context": meta.get("page_context", ""),
+                "bbox": bbox,
                 "name": meta.get("name", "?"),
                 "text": docs[i] or "",
                 "score": round(1.0 - float(dists[i]), 4) if dists else 0.0,
@@ -102,8 +129,30 @@ def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
     return out
 
 
-async def add(workspace_id, document_id, name, chunks, vectors) -> None:
-    await anyio.to_thread.run_sync(_add_sync, str(workspace_id), str(document_id), name, chunks, vectors)
+def _get_ws_sync(workspace_id: str) -> list[dict]:
+    res = _col().get(where={"workspace_id": workspace_id}, include=["documents", "metadatas"])
+    docs = res.get("documents") or []
+    metas = res.get("metadatas") or []
+    out = []
+    for i in range(len(docs)):
+        meta = metas[i] or {}
+        out.append(
+            {
+                "doc_id": meta.get("document_id", ""),
+                "chunk_index": int(meta.get("chunk_index", 0)),
+                "page_number": int(meta.get("page_number", 1)),
+                "content_type": meta.get("content_type", "text"),
+                "name": meta.get("name", "?"),
+                "text": docs[i] or "",
+            }
+        )
+    return out
+
+
+async def add(workspace_id, document_id, name, chunks: list[Chunk], vectors) -> None:
+    await anyio.to_thread.run_sync(
+        _add_sync, str(workspace_id), str(document_id), name, chunks, vectors
+    )
 
 
 async def delete_document(document_id) -> None:
@@ -112,6 +161,10 @@ async def delete_document(document_id) -> None:
 
 async def delete_workspace(workspace_id) -> None:
     await anyio.to_thread.run_sync(_delete_ws_sync, str(workspace_id))
+
+
+async def get_workspace_chunks(workspace_id) -> list[dict]:
+    return await anyio.to_thread.run_sync(_get_ws_sync, str(workspace_id))
 
 
 async def query(workspace_id, vec, top_k: int) -> list[dict]:

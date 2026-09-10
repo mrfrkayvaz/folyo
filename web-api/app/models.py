@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -37,8 +37,22 @@ class Document(SQLModel, table=True):
     )
     chunk_count: int = Field(default=0)
     error: str | None = Field(default=None)
+    summary: str | None = Field(default=None, sa_column=Column(Text))
+    stats: dict | None = Field(default=None, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class DocumentQuestion(SQLModel, table=True):
+    __tablename__ = "document_questions"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    document_id: uuid.UUID = Field(
+        sa_column=Column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    )
+    question: str = Field(default="")
+    position: int = Field(default=0)
+    created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class EmbeddingJob(SQLModel, table=True):
@@ -84,5 +98,6 @@ __all__ = [
     "Workspace",
     "Document",
     "EmbeddingJob",
+    "DocumentQuestion",
     "ChatMessage",
 ]

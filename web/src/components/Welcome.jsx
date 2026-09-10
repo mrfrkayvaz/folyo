@@ -3,7 +3,7 @@ import { DocIcon } from "./icons.jsx"
 
 export default function Welcome({ onPickFile, onDropFiles }) {
   const [dragging, setDragging] = useState(false)
-  const dragDepth = useRef(0) // alt elemanlar üzerinde gezinirken flicker'ı önler
+  const dragDepth = useRef(0)
 
   const handleDragEnter = (e) => {
     e.preventDefault()
@@ -36,7 +36,7 @@ export default function Welcome({ onPickFile, onDropFiles }) {
         <img src="/logo.svg" alt="Folyo" className="h-16 w-16 drop-shadow-lg sm:h-20 sm:w-20" />
         <h1 className="text-4xl font-semibold tracking-tight text-primary sm:text-5xl">Folyo</h1>
         <p className="max-w-xl text-base leading-7 text-base-content/70 sm:text-lg sm:leading-8">
-          Bir belge yükleyin (PDF, TXT, MD), içeriği hakkında soru sorun.
+          Bir belge yükleyin (PDF, JPG, PNG, TXT, MD), içeriği hakkında soru sorun.
           Yanıtlar yalnızca belgeden, kaynak göstererek üretilir.
         </p>
       </div>
@@ -73,7 +73,7 @@ export default function Welcome({ onPickFile, onDropFiles }) {
               dosya seçmek için tıkla
             </span>
           </span>
-          <span className="mt-1 text-xs text-base-content/40">PDF · TXT · MD — resimler kabul edilmez</span>
+          <span className="mt-1 text-xs text-base-content/40">PDF · JPG · PNG · TXT · MD</span>
         </button>
       </div>
     </section>

@@ -1,9 +1,5 @@
 import { ArrowLeftIcon, MoonIcon, SunIcon } from "./icons.jsx"
 
-/**
- * Sağ kolonun başlığı (yalnızca içerik alanının üstünde — sidebar'a binmez).
- * Logo sidebar'dadır; burada: geri butonu + sohbet adı + tema değiştirici.
- */
 export default function Header({ theme, onToggleTheme, onBack, title }) {
   const dark = theme === "gemdark"
   return (

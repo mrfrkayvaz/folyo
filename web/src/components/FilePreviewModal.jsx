@@ -3,19 +3,18 @@ import { DocIcon, XIcon } from "./icons.jsx"
 import { formatBytes } from "../utils/formatters.js"
 import { getDocumentFileUrlAction } from "../actions/documentActions.js"
 
-/**
- * Üst bar veya listedeki dosyalara tıklandığında açılan
- * temiz dosya önizleme modalı.
- */
 export default function FilePreviewModal({ attachment, onClose }) {
   const [content, setContent] = useState(null)
   const [pdfUrl, setPdfUrl] = useState(null)
+  const [imageUrl, setImageUrl] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const filename = attachment?.filename || attachment?.file?.name || "Dosya"
   const size = attachment?.size ?? attachment?.file?.size
   const isPdf = filename.toLowerCase().endsWith(".pdf")
+  const isImage = /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(filename)
+  const targetPage = attachment?.targetPage ?? null
 
   useEffect(() => {
     if (!attachment) return
@@ -28,19 +27,21 @@ export default function FilePreviewModal({ attachment, onClose }) {
       setError(null)
       setContent(null)
       setPdfUrl(null)
+      setImageUrl(null)
 
       try {
-        // 1. Yerel istemci tarafında yüklenmiş File nesnesi varsa
         if (attachment.file) {
           if (isPdf) {
             createdUrl = URL.createObjectURL(attachment.file)
             if (isMounted) setPdfUrl(createdUrl)
+          } else if (isImage) {
+            createdUrl = URL.createObjectURL(attachment.file)
+            if (isMounted) setImageUrl(createdUrl)
           } else {
             const text = await attachment.file.text()
             if (isMounted) setContent(text)
           }
         }
-        // 2. Sunucuda kayıtlı belge id'si (docId) varsa
         else if (attachment.docId) {
           const res = await fetch(getDocumentFileUrlAction(attachment.docId))
           if (!res.ok) {
@@ -51,6 +52,10 @@ export default function FilePreviewModal({ attachment, onClose }) {
             const blob = await res.blob()
             createdUrl = URL.createObjectURL(blob)
             if (isMounted) setPdfUrl(createdUrl)
+          } else if (isImage) {
+            const blob = await res.blob()
+            createdUrl = URL.createObjectURL(blob)
+            if (isMounted) setImageUrl(createdUrl)
           } else {
             const text = await res.text()
             if (isMounted) setContent(text)
@@ -89,12 +94,9 @@ export default function FilePreviewModal({ attachment, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6 backdrop-blur-xs transition-opacity animate-in fade-in duration-150">
-      {/* Arka plan overlay */}
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
 
-      {/* Önizleme Modal Kartı */}
       <div className="relative z-10 flex min-h-[300px] max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-base-300 bg-base-100 shadow-2xl overflow-hidden">
-        {/* Üst Başlık Barı */}
         <div className="flex items-center justify-between px-4 py-3 sm:px-6 border-b border-base-200">
           <div className="flex items-center gap-2.5 min-w-0 pr-4">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -107,6 +109,7 @@ export default function FilePreviewModal({ attachment, onClose }) {
               {size && (
                 <p className="text-xs text-base-content/50">
                   {formatBytes(size)}
+                  {targetPage ? ` · Sayfa ${targetPage}` : ""}
                 </p>
               )}
             </div>
@@ -123,7 +126,6 @@ export default function FilePreviewModal({ attachment, onClose }) {
           </button>
         </div>
 
-        {/* Gövde / İçerik Alanı */}
         <div className="flex-1 min-h-[300px] overflow-y-auto p-0 flex flex-col">
           {loading ? (
             <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-center p-4 sm:p-6">
@@ -136,9 +138,15 @@ export default function FilePreviewModal({ attachment, onClose }) {
             </div>
           ) : isPdf && pdfUrl ? (
             <iframe
-              src={pdfUrl}
+              src={targetPage ? `${pdfUrl}#page=${targetPage}` : pdfUrl}
               className="h-[75vh] min-h-[300px] w-full border-0 bg-base-200 block"
               title={filename}
+            />
+          ) : isImage && imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={filename}
+              className="max-h-[75vh] w-full object-contain bg-base-200 p-2 block"
             />
           ) : (
             <pre className="min-h-[300px] flex-1 whitespace-pre-wrap break-words font-mono text-xs sm:text-sm leading-relaxed text-base-content/90 bg-base-200/50 p-4 sm:p-6 overflow-x-auto border-0 rounded-none m-0">

@@ -1,9 +1,15 @@
+import { useState } from "react"
 import Avatar from "./Avatar.jsx"
 import RichText from "./RichText.jsx"
-import { DocIcon } from "./icons.jsx"
+import InspectModal from "./InspectModal.jsx"
+import { CONFIDENCE_LEVELS } from "../constants/index.js"
+import { ShieldIcon } from "./icons.jsx"
 
 export default function AssistantMessage({ m, onCitationClick }) {
+  const [showInspect, setShowInspect] = useState(false)
   const thinking = m.streaming && !m.text
+  const confMeta = CONFIDENCE_LEVELS[m.confidenceLevel]
+  const inspectable = !m.streaming && (m.confidence != null || m.chunkIds?.length > 0 || m.rejected)
 
   return (
     <div className="ctx-rise flex gap-3">
@@ -12,6 +18,14 @@ export default function AssistantMessage({ m, onCitationClick }) {
         {thinking ? (
           <div className="flex items-center rounded-2xl bg-base-200 px-4 py-3">
             <span className="loading loading-dots text-base-content/50" />
+          </div>
+        ) : m.rejected ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-dashed border-warning/50 bg-warning/5 px-4 py-3">
+            <ShieldIcon className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+            <div>
+              <p className="text-sm font-medium text-warning">Belgelerde doğrulanabilir bilgi bulunamadı</p>
+              <p className="mt-1 text-xs leading-5 text-base-content/70">{m.text.replace(/^⚠️\s*/, "")}</p>
+            </div>
           </div>
         ) : (
           <>
@@ -24,24 +38,25 @@ export default function AssistantMessage({ m, onCitationClick }) {
           </>
         )}
 
-        {m.sources?.length > 0 && !m.streaming && (
+        {inspectable && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            {m.sources.map((s, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => onCitationClick?.({ filename: s.label })}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-base-300 bg-base-200/70 py-0.5 pl-2 pr-2.5 text-xs text-base-content/80 hover:border-primary/50 hover:bg-base-200 transition"
-                title={`${s.label} belgesini önizle`}
-              >
-                <DocIcon className="h-3.5 w-3.5 text-primary" />
-                <span className="max-w-52 truncate font-medium">{s.label}</span>
-                {s.meta && <span className="text-base-content/45">· {s.meta}</span>}
-              </button>
-            ))}
+            {confMeta && m.confidence != null && (
+              <span className={`badge ${confMeta.cls} badge-soft badge-sm gap-1`}>
+                {confMeta.label} · %{Math.round(m.confidence)}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowInspect(true)}
+              className="btn btn-ghost btn-xs gap-1 border border-base-300 text-base-content/70 hover:border-primary/50 hover:text-primary"
+            >
+              İncele
+            </button>
           </div>
         )}
       </div>
+
+      {showInspect && <InspectModal message={m} onClose={() => setShowInspect(false)} />}
     </div>
   )
 }

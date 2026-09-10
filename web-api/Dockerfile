@@ -3,6 +3,12 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
+# OCR sistem bağımlılıkları (Tesseract + Türkçe/İngilizce dil verisi)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-tur tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
 # Bağımlılıkları lockfile'dan kur (kaynak kopyalamadan önce — katman önbelleği için)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev

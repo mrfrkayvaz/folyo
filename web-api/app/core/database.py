@@ -35,6 +35,24 @@ async def init_db() -> None:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+        await conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS summary TEXT"))
+        await conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS stats JSONB"))
+        await conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS document_questions ("
+                " id UUID PRIMARY KEY,"
+                " document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,"
+                " question TEXT NOT NULL,"
+                " position INT NOT NULL,"
+                " created_at TIMESTAMPTZ NOT NULL)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_document_questions_document_id "
+                "ON document_questions(document_id)"
+            )
+        )
     async with get_factory()() as session:
         await session.execute(
             text("UPDATE documents SET status='failed', updated_at=now() "

@@ -1,8 +1,5 @@
 import { useEffect } from "react"
 
-/**
- * Genel kullanım için yeniden kullanılabilir onay modalı (Popup).
- */
 export default function ConfirmModal({
   isOpen,
   onClose,
@@ -28,10 +25,8 @@ export default function ConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs transition-opacity animate-in fade-in duration-150">
-      {/* Arka plan overlay */}
       <div className="fixed inset-0" onClick={() => !loading && onClose()} aria-hidden="true" />
 
-      {/* Modal Kutusu */}
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-base-300 bg-base-100 p-6 shadow-2xl transition-all">
         <h3 className="text-lg font-semibold tracking-tight text-base-content">{title}</h3>
         {description && (

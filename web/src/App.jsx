@@ -17,10 +17,10 @@ import {
   uploadDocumentXHRAction,
 } from "./actions/index.js"
 import { DocumentStatus } from "./enums/index.js"
-import { THEME_KEY } from "./constants/index.js"
+import { SSE_EVENTS, THEME_KEY } from "./constants/index.js"
 import { useWorkspacesStore } from "./stores/workspacesStore.js"
 
-const ALLOWED_EXTS = /^([^.]+\.)?(pdf|txt|md)$/i
+const ALLOWED_EXTS = /^([^.]+\.)?(pdf|txt|md|png|jpg|jpeg|webp|bmp|tif|tiff)$/i
 let idCounter = 0
 const nid = () => `m${++idCounter}`
 let attachKey = 0
@@ -140,9 +140,22 @@ export default function App() {
             const doc = docs.get(a.docId)
             if (!doc) return a
             const phase = mapDocPhase(doc.status)
-            if (phase === a.phase) return a
+            if (
+              phase === a.phase &&
+              a.summary === (doc.summary ?? undefined) &&
+              a.starterQuestions === (doc.starter_questions ?? undefined)
+            )
+              return a
             changed = true
-            return { ...a, phase, error: doc.error ?? undefined, progress: undefined }
+            return {
+              ...a,
+              phase,
+              error: doc.error ?? undefined,
+              progress: undefined,
+              stats: doc.stats ?? undefined,
+              summary: doc.summary ?? undefined,
+              starterQuestions: doc.starter_questions ?? undefined,
+            }
           })
           attachRef.current = changed ? next : prev
           return changed ? next : prev
@@ -191,17 +204,28 @@ export default function App() {
             size: doc.size,
             phase: mapDocPhase(doc.status),
             error: doc.error ?? undefined,
+            stats: doc.stats ?? undefined,
+            summary: doc.summary ?? undefined,
+            starterQuestions: doc.starter_questions ?? undefined,
           })),
         )
         if (docs.some((doc) => !terminalPhase(mapDocPhase(doc.status)))) startStatusPolling(id)
       }
       setMessages(
-        (d.messages || []).map((m) => ({
-          id: m.id,
-          role: m.role,
-          text: m.content,
-          sources: m.citations || undefined,
-        })),
+        (d.messages || []).map((m) => {
+          const cit = Array.isArray(m.citations) ? { sources: m.citations } : m.citations
+          return {
+            id: m.id,
+            role: m.role,
+            text: m.content,
+            sources: cit?.sources || undefined,
+            chunkIds: cit?.chunk_ids || undefined,
+            confidence: cit?.confidence ?? undefined,
+            confidenceLevel: cit?.confidence_level ?? undefined,
+            rejected: cit?.rejected ?? undefined,
+            signals: cit?.signals || undefined,
+          }
+        }),
       )
     } catch {
       window.history.replaceState(null, "", "/")
@@ -226,7 +250,7 @@ export default function App() {
     if (wasActive) newChat()
   }
 
-  const handleCitationClick = ({ filename, chunkIndex }) => {
+  const handleCitationClick = ({ filename, pageNumber, chunkIndex }) => {
     if (!filename) return
     const targetName = filename.trim().toLowerCase()
     const found = attachments.find((a) => {
@@ -234,7 +258,7 @@ export default function App() {
       return fn === targetName || fn.includes(targetName) || targetName.includes(fn)
     })
     if (found) {
-      setPreviewAttachment({ ...found, targetChunk: chunkIndex })
+      setPreviewAttachment({ ...found, targetChunk: chunkIndex, targetPage: pageNumber })
     }
   }
 
@@ -251,17 +275,46 @@ export default function App() {
     pushMsg({ id: qaId, role: "assistant", text: "", streaming: true })
     let acc = ""
     let sources = null
+    let metaRejected = false
+    let metaConfidence = null
+    let metaLevel = null
+    let metaChunkIds = null
+    let metaSignals = null
     try {
       await askQAAction(wid, q, {
         onEvent(event, data) {
-          if (event === "meta" && data.sources) sources = data.sources
-          else if (event === "delta") {
+          if (event === SSE_EVENTS.META) {
+            if (data.sources) sources = data.sources
+            metaRejected = data.rejected === true
+            metaConfidence = data.confidence ?? metaConfidence
+            metaLevel = data.confidence_level ?? metaLevel
+            metaChunkIds = data.chunk_ids ?? metaChunkIds
+            metaSignals = data.signals ?? metaSignals
+          } else if (event === SSE_EVENTS.DELTA) {
             acc += data.text
             setMsg(qaId, (m) => ({ ...m, text: acc }))
-          } else if (event === "done") {
-            setMsg(qaId, (m) => ({ ...m, sources: data.sources || sources, streaming: false }))
-          } else if (event === "error") {
-            setMsg(qaId, (m) => ({ ...m, text: `⚠️ ${data.message}`, streaming: false, sources: m.sources || sources }))
+          } else if (event === SSE_EVENTS.DONE) {
+            setMsg(qaId, (m) => ({
+              ...m,
+              sources: data.sources || sources,
+              streaming: false,
+              confidence: data.confidence ?? metaConfidence,
+              confidenceLevel: data.confidence_level ?? metaLevel,
+              chunkIds: data.chunk_ids ?? metaChunkIds,
+              signals: data.signals ?? metaSignals,
+            }))
+          } else if (event === SSE_EVENTS.ERROR) {
+            setMsg(qaId, (m) => ({
+              ...m,
+              text: `⚠️ ${data.message}`,
+              streaming: false,
+              sources: m.sources || sources,
+              rejected: metaRejected,
+              confidence: metaConfidence,
+              confidenceLevel: metaLevel,
+              chunkIds: metaChunkIds,
+              signals: metaSignals,
+            }))
           }
         },
       })
@@ -285,10 +338,10 @@ export default function App() {
     if (!list.length) return
     const valid = list.filter((f) => ALLOWED_EXTS.test(f.name))
     if (!valid.length) {
-      alert("Yalnızca PDF, TXT veya MD dosyaları yüklenebilir.")
+      alert("Yalnızca PDF, JPG, PNG, TXT veya MD dosyaları yüklenebilir.")
       return
     }
-    if (valid.length < list.length) alert("Bazı dosyalar desteklenmiyor ve atlandı. (Yalnızca PDF · TXT · MD)")
+    if (valid.length < list.length) alert("Bazı dosyalar desteklenmiyor ve atlandı. (Yalnızca PDF · JPG · PNG · TXT · MD)")
     ws.ensureWorkspace().then((w) => {
       if (window.location.pathname !== `/workspace/${w.id}`) {
         window.history.pushState(null, "", `/workspace/${w.id}`)
@@ -389,7 +442,7 @@ export default function App() {
             ) : messages.length > 0 ? (
               <MessageList messages={messages} onCitationClick={handleCitationClick} />
             ) : allReady ? (
-              <ReadyState totalCount={totalCount} />
+              <ReadyState totalCount={totalCount} attachments={attachments} onAsk={handleSend} />
             ) : (
               <Welcome onPickFile={pickFile} onDropFiles={handleDropFiles} />
             )}
@@ -405,7 +458,7 @@ export default function App() {
         <input
           ref={fileRef}
           type="file"
-          accept=".pdf,.txt,.md"
+          accept=".pdf,.txt,.md,.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff"
           multiple
           className="hidden"
           onChange={onFilePicked}

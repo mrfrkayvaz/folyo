@@ -1,5 +1,3 @@
-/* Minimal satır ikon seti (Heroicons Outline benzeri, stroke tabanlı) */
-
 function S({ children, className = "h-5 w-5" }) {
   return (
     <svg

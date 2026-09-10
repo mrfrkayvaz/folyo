@@ -47,27 +47,35 @@ async def ask(wid: uuid.UUID, body: QaBody):
         sf = get_factory()
         acc = ""
         err = None
-        sources = None
+        meta = None
         try:
             async for ev in qa_events(wid, question):
                 yield _sse(ev["type"], {k: v for k, v in ev.items() if k != "type"})
                 if ev["type"] == "delta":
                     acc += ev["text"]
                 elif ev["type"] == "meta":
-                    sources = ev.get("sources")
+                    meta = ev
                 elif ev["type"] == "error":
                     err = ev.get("message") or err
-                elif ev["type"] == "done":
-                    sources = ev.get("sources") or sources
 
             content = acc if acc else (f"⚠️ {err}" if err else ERROR_QA_GENERIC_FAILURE)
+            citations = None
+            if meta:
+                citations = {
+                    "sources": meta.get("sources") or [],
+                    "chunk_ids": meta.get("chunk_ids") or [],
+                    "confidence": meta.get("confidence"),
+                    "confidence_level": meta.get("confidence_level"),
+                    "rejected": bool(meta.get("rejected")),
+                    "signals": meta.get("signals"),
+                }
             async with sf() as s:
                 s.add(
                     ChatMessage(
                         workspace_id=wid,
                         role=ChatRole.assistant,
                         content=content,
-                        citations=sources or None,
+                        citations=citations,
                     )
                 )
                 await s.commit()

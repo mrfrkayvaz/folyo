@@ -17,7 +17,6 @@ function timeAgo(iso) {
 export default function Sidebar({ workspaces, activeId, onSelect, onNew, onDelete }) {
   return (
     <aside className="flex w-52 shrink-0 flex-col border-r border-base-300/40 md:w-64">
-      {/* Folyo logosu — her zaman burada, değişmez */}
       <div className="flex items-center gap-2 px-3 pb-2 pt-3">
         <img src="/logo.svg" alt="Folyo" className="h-9 w-9 shrink-0 rounded-lg drop-shadow" />
         <span className="truncate text-lg font-semibold tracking-tight">Folyo</span>
