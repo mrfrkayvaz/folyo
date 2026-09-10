@@ -18,6 +18,8 @@ class Workspace(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str = Field(default=DEFAULT_WORKSPACE_NAME, index=True)
+    summary: str | None = Field(default=None, sa_column=Column(Text))
+    summary_docs: list | None = Field(default=None, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
@@ -38,6 +40,7 @@ class Document(SQLModel, table=True):
     chunk_count: int = Field(default=0)
     error: str | None = Field(default=None)
     summary: str | None = Field(default=None, sa_column=Column(Text))
+    summary_status: str | None = Field(default=None, sa_column=Column(Text))
     stats: dict | None = Field(default=None, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))

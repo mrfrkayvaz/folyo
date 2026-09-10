@@ -133,6 +133,8 @@ export default function App() {
       try {
         const d = await getWorkspaceAction(widNow)
         const docs = new Map((d.documents || []).map((x) => [x.id, x]))
+        const wsObj = d.workspace || d
+        if (wsObj.id) ws.openWorkspace({ ...(ws.activeWorkspace || {}), ...wsObj })
         setAttachments((prev) => {
           let changed = false
           const next = prev.map((a) => {
@@ -160,7 +162,10 @@ export default function App() {
           attachRef.current = changed ? next : prev
           return changed ? next : prev
         })
-        if (attachRef.current.every((a) => terminalPhase(a.phase))) stopStatusPolling()
+        if (attachRef.current.every((a) => terminalPhase(a.phase))) {
+          const embedded = attachRef.current.filter((a) => a.phase === DocumentStatus.EMBEDDED).length
+          if (embedded === 0 || wsObj.summary) stopStatusPolling()
+        }
       } catch {}
     }, 1500)
   }
@@ -442,7 +447,12 @@ export default function App() {
             ) : messages.length > 0 ? (
               <MessageList messages={messages} onCitationClick={handleCitationClick} />
             ) : allReady ? (
-              <ReadyState totalCount={totalCount} attachments={attachments} onAsk={handleSend} />
+              <ReadyState
+                totalCount={totalCount}
+                attachments={attachments}
+                onAsk={handleSend}
+                workspace={ws.activeWorkspace}
+              />
             ) : (
               <Welcome onPickFile={pickFile} onDropFiles={handleDropFiles} />
             )}

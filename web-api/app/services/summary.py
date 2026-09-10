@@ -8,11 +8,12 @@ Girdi: başlıklar + stratified örnek (ilk/orta/son), ~2500 karakter bütçe.
 import json
 import re
 
-from ..core.constants import SUMMARY_PROMPT
+from ..core.constants import SUMMARY_PROMPT, WORKSPACE_SUMMARY_PROMPT
 from . import llm
 from .types import Chunk
 
 _SAMPLE_CHAR_BUDGET = 2500
+MAX_QUESTIONS = 6
 
 
 def build_sample(chunks: list[Chunk]) -> str:
@@ -69,7 +70,27 @@ async def generate_summary(chunks: list[Chunk]) -> dict | None:
         return None
     summary = (data.get("summary") or "").strip()
     questions = [str(q).strip() for q in (data.get("questions") or []) if str(q).strip()]
-    questions = questions[:3]
+    questions = questions[:MAX_QUESTIONS]
     if not summary:
         return None
     return {"summary": summary, "questions": questions}
+
+
+async def generate_workspace(entries: list[dict]) -> dict | None:
+    """Belge özetlerinden workspace özeti + başlık üretir: `{summary, title}`."""
+    if not entries:
+        return None
+    blocks = "\n".join(f"- {e['name']}: {e['summary']}" for e in entries)
+    messages = [
+        {"role": "system", "content": WORKSPACE_SUMMARY_PROMPT},
+        {"role": "user", "content": f"BELGE ÖZETLERİ:\n\n{blocks}"},
+    ]
+    raw = await llm.complete(messages, temperature=0.3, max_tokens=900)
+    data = parse_json_blocks(raw)
+    if not data:
+        return None
+    summary = (data.get("summary") or "").strip()
+    title = (data.get("title") or "").strip()
+    if not summary:
+        return None
+    return {"summary": summary, "title": title}

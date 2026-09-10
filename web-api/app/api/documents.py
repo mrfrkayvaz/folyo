@@ -149,11 +149,13 @@ async def delete_document(did: uuid.UUID):
         d = await s.get(Document, did)
         if not d:
             raise HTTPException(404, "Belge bulunamadı.")
+        ws_id = d.workspace_id
         await s.delete(d)
         await s.commit()
     jobs.request_cancel(str(did))
     shutil.rmtree(storage_dir(did), ignore_errors=True)
     await chroma_store.delete_document(did)
+    jobs.schedule_workspace_summary(ws_id)
     return {"deleted": True}
 
 

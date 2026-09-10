@@ -3,10 +3,12 @@ import shutil
 import uuid
 from pathlib import Path
 
+from sqlmodel import select
+
 from ..core.config import get_settings
 from ..core.database import get_factory
-from ..core.enums import DocumentStatus, EmbeddingStatus
-from ..models import Document, DocumentQuestion, EmbeddingJob
+from ..core.enums import DocumentStatus, EmbeddingStatus, SummaryStatus
+from ..models import Document, DocumentQuestion, EmbeddingJob, Workspace
 from . import chroma_store, embeddings, ingest
 
 
@@ -15,6 +17,7 @@ class EmbeddingCancelled(Exception):
 
 
 _cancel_events: dict[str, asyncio.Event] = {}
+_ws_guard: dict[str, asyncio.Lock] = {}
 
 
 def request_cancel(document_id: str) -> None:
@@ -103,7 +106,7 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
                 s.add(job)
             await s.commit()
 
-        asyncio.create_task(_enrich_summary(document_id, chunks))
+        asyncio.create_task(_enrich_summary(workspace_id, document_id, chunks))
 
     except EmbeddingCancelled:
         await chroma_store.delete_document(document_id)
@@ -141,33 +144,104 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
         _cancel_events.pop(str(document_id), None)
 
 
-async def _enrich_summary(document_id: uuid.UUID, chunks) -> None:
-    """Embedding sonrası non-blocking özet + starter sorular (rag_arch §4).
+async def _save_summary_status(document_id: uuid.UUID, status: SummaryStatus) -> None:
+    try:
+        async with get_factory()() as s:
+            doc = await s.get(Document, document_id)
+            if doc:
+                doc.summary_status = status.value
+                doc.updated_at = doc.updated_at.__class__.now()
+                s.add(doc)
+                await s.commit()
+    except Exception:
+        pass
 
-    Hata veya model isteksizliği belgeyi asla `failed` yapmaz; özet boş kalır.
-    """
+
+async def _enrich_summary(workspace_id: uuid.UUID, document_id: uuid.UUID, chunks) -> None:
     from . import summary as summary_svc
 
     try:
+        await _save_summary_status(document_id, SummaryStatus.pending)
         result = await summary_svc.generate_summary(chunks)
+        if result:
+            async with get_factory()() as s:
+                doc = await s.get(Document, document_id)
+                if not doc:
+                    return
+                old = (
+                    await s.execute(
+                        select(DocumentQuestion).where(DocumentQuestion.document_id == document_id)
+                    )
+                ).scalars().all()
+                for q in old:
+                    s.delete(q)
+                doc.summary = result["summary"]
+                doc.summary_status = SummaryStatus.done.value
+                doc.updated_at = doc.updated_at.__class__.now()
+                s.add(doc)
+                for i, q in enumerate(result["questions"]):
+                    s.add(DocumentQuestion(document_id=document_id, question=q, position=i))
+                await s.commit()
+        else:
+            await _save_summary_status(document_id, SummaryStatus.failed)
+    except Exception:
+        await _save_summary_status(document_id, SummaryStatus.failed)
+    finally:
+        schedule_workspace_summary(workspace_id)
+
+
+def schedule_workspace_summary(workspace_id) -> None:
+    asyncio.create_task(_delayed_workspace_summary(workspace_id))
+
+
+async def _delayed_workspace_summary(workspace_id) -> None:
+    await asyncio.sleep(2)
+    lock = _ws_guard.setdefault(str(workspace_id), asyncio.Lock())
+    async with lock:
+        await _run_workspace_summary(workspace_id)
+
+
+async def _run_workspace_summary(workspace_id) -> None:
+    from . import summary as summary_svc
+
+    try:
+        async with get_factory()() as s:
+            ws = await s.get(Workspace, workspace_id)
+            if not ws:
+                return
+            docs = (
+                await s.execute(select(Document).where(Document.workspace_id == workspace_id))
+            ).scalars().all()
+            if not docs:
+                return
+            if any(d.summary_status == SummaryStatus.pending.value for d in docs):
+                return
+            done = [d for d in docs if d.summary and d.summary_status in (SummaryStatus.done.value, None)]
+            if not done:
+                return
+            signature = sorted(str(d.id) for d in docs)
+            if ws.summary_docs == signature:
+                return
+
+        inputs = [{"name": d.filename, "summary": d.summary} for d in done]
+        result = await summary_svc.generate_workspace(inputs)
         if not result:
             return
+
         async with get_factory()() as s:
-            doc = await s.get(Document, document_id)
-            if not doc:
+            ws = await s.get(Workspace, workspace_id)
+            if not ws:
                 return
-            doc.summary = result["summary"]
-            doc.updated_at = doc.updated_at.__class__.now()
-            s.add(doc)
-            for i, q in enumerate(result["questions"]):
-                s.add(DocumentQuestion(document_id=document_id, question=q, position=i))
+            ws.summary = result["summary"]
+            ws.name = result["title"] or ws.name
+            ws.summary_docs = signature
+            s.add(ws)
             await s.commit()
     except Exception:
         pass
 
 
 def _compute_stats(chunks) -> dict:
-    """Kimlik kartı verisi: sayfa adedi, chunk adedi, tür dağılımı."""
     types: dict[str, int] = {}
     pages: set[int] = set()
     for c in chunks:

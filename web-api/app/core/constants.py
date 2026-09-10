@@ -82,7 +82,19 @@ SUMMARY_PROMPT = (
     "Bir belgenin özetini ve başlangıç sorularını üreteceksin.\n"
     "Kurallar:\n"
     "1. Özet 2-3 cümle; belgenin kapsamını anlatsın; belgenin dilini kullan (TR/EN).\n"
-    "2. Tam olarak 3 başlangıç sorusu üret; sorular YALNIZCA aşağıdaki içerikten cevaplanabilir olsun.\n"
-    "3. Cevabı sadece JSON olarak döndür: {\"summary\": \"...\", \"questions\": [\"...\", \"...\", \"...\"]}\n"
+    "2. 1 ile 6 arasında başlangıç sorusu üret; sayıyı belgenin uzunluğuna ve önemine göre sen belirle. "
+    "Sorular YALNIZCA aşağıdaki içerikten cevaplanabilir olsun.\n"
+    "3. Cevabı sadece JSON olarak döndür: {\"summary\": \"...\", \"questions\": [\"...\", ...]}\n"
+    "4. JSON dışında hiçbir şey yazma."
+)
+
+# Workspace özeti + başlık — tüm belge özetlerinin sentezi
+WORKSPACE_SUMMARY_PROMPT = (
+    "Bir çalışma alanındaki belgelerin özetlerini alıyorsun. Görevin: (1) tüm belgeleri "
+    "kapsayan 2-4 cümlelik bütünsel bir özet, (2) çalışma alanı için kısa bir başlık (max ~50 karakter).\n"
+    "Kurallar:\n"
+    "1. Belge özetlerini tekrar etme; hangi belge hangi konuyu kapsıyor + bütünsel tabloyu çıkar.\n"
+    "2. Dil: Türkçe (belgeler farklı dildeyse baskın dile uy).\n"
+    "3. Cevabı sadece JSON olarak döndür: {\"summary\": \"...\", \"title\": \"...\"}\n"
     "4. JSON dışında hiçbir şey yazma."
 )

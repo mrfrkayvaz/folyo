@@ -108,4 +108,12 @@ Doğrulamalar: sentetik 2 sayfalı PDF'te `extract_segments` (tür/sayfa/bbox, s
 
 Sırada: Adım 7 (TESTING.md kalibrasyon + arch.md senkronu) + iki canlı doğrulama (vision model set edilince; LLM özet/QA onayınla).
 
+**Workspace düzeyinde özet + başlık eklendi (aynı gün):**
+- `documents.summary_status` (pending/done/failed) + `workspaces.summary` + `workspaces.summary_docs` (doc-set imzası) kolonları — idempotent migrasyon (canlı doğrulandı).
+- Soru sayısı 1–6: eşik/metrik yok — **LLM karar veriyor** (prompt güncellendi). `document_questions` yapısı aynı; yeniden üretimde eski sorular silinip yenileri yazılıyor.
+- Workspace özeti + başlık: doc-set imza + gate — *pending varsa bekle · hiç done yoksa (tümü failed) üretme · failed hariç done özetleriyle sentez* → `workspaces.summary` + `workspaces.name` (LLM başlığı). Tetikleme: her dosya özeti bittikten sonra (2sn drain + lock) ve doküman silinince.
+- `qa.py`'deki "ilk soru başlık olsun" fallback'i kaldırıldı.
+- Doğrulama: migrasyon canlı, gate probu (legacy belge done sayılır ✓), birim testler (workspace üretimi mock'lu + 1–6 soru), compile, vite, container reload.
+- Mevcut workspace'lerin özeti henüz üretilmedi (kredi kuralı) — sıradaki yükleme/silmede otomatik tetiklenir.
+
 

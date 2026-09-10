@@ -36,7 +36,10 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
         await conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS summary TEXT"))
+        await conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS summary_status TEXT"))
         await conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS stats JSONB"))
+        await conn.execute(text("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS summary TEXT"))
+        await conn.execute(text("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS summary_docs JSONB"))
         await conn.execute(
             text(
                 "CREATE TABLE IF NOT EXISTS document_questions ("

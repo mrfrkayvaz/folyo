@@ -77,7 +77,12 @@ async def get_workspace(wid: uuid.UUID):
         for q in q_questions:
             q_by_doc.setdefault(q.document_id, []).append(q.question)
     return {
-        "workspace": {"id": str(ws.id), "name": ws.name, "created_at": ws.created_at.isoformat()},
+        "workspace": {
+            "id": str(ws.id),
+            "name": ws.name,
+            "summary": ws.summary,
+            "created_at": ws.created_at.isoformat(),
+        },
         "messages": [
             {
                 "id": str(m.id),

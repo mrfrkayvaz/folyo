@@ -31,3 +31,9 @@ class ContentType(str, enum.Enum):
     scanned_page = "scanned_page"
     form_data = "form_data"
     diagram = "diagram"
+
+
+class SummaryStatus(str, enum.Enum):
+    pending = "pending"
+    done = "done"
+    failed = "failed"

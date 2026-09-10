@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from ..core.constants import DEFAULT_WORKSPACE_NAME, ERROR_QA_GENERIC_FAILURE
+from ..core.constants import ERROR_QA_GENERIC_FAILURE
 from ..core.database import get_factory
 from ..core.enums import ChatRole
 from ..models import ChatMessage, Workspace
@@ -38,9 +38,6 @@ async def ask(wid: uuid.UUID, body: QaBody):
             raise HTTPException(404, "Workspace bulunamadı.")
 
         s.add(ChatMessage(workspace_id=wid, role=ChatRole.user, content=question))
-        if ws.name == DEFAULT_WORKSPACE_NAME:
-            ws.name = " ".join(question.split())[:60]
-            s.add(ws)
         await s.commit()
 
     async def gen():
