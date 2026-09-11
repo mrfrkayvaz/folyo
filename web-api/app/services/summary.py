@@ -8,8 +8,9 @@ Girdi: başlıklar + stratified örnek (ilk/orta/son), ~2500 karakter bütçe.
 import json
 import re
 
-from ..core.constants import SUMMARY_PROMPT, WORKSPACE_SUMMARY_PROMPT
+from ..core.prompts import SUMMARY_PROMPT, WORKSPACE_SUMMARY_PROMPT
 from . import llm
+from .ai import AIError
 from .types import Chunk
 
 _SAMPLE_CHAR_BUDGET = 2500
@@ -67,12 +68,12 @@ async def generate_summary(chunks: list[Chunk]) -> dict | None:
     raw = await llm.complete(messages, temperature=0.3, max_tokens=900)
     data = parse_json_blocks(raw)
     if not data:
-        return None
+        raise AIError(f"Özet yanıtı JSON değil: {raw[:200]!r}")
     summary = (data.get("summary") or "").strip()
+    if not summary:
+        raise AIError("Özet yanıtında summary boş döndü.")
     questions = [str(q).strip() for q in (data.get("questions") or []) if str(q).strip()]
     questions = questions[:MAX_QUESTIONS]
-    if not summary:
-        return None
     return {"summary": summary, "questions": questions}
 
 

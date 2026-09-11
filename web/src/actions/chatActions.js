@@ -1,12 +1,7 @@
+import { httpErrorMessage } from "../lib/http.js"
+
 async function consumeStream(res, onEvent) {
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`
-    try {
-      const body = await res.json()
-      if (body?.detail) msg = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)
-    } catch {}
-    throw new Error(msg)
-  }
+  if (!res.ok) throw new Error(await httpErrorMessage(res))
   if (!res.body) throw new Error("Akış desteklenmiyor.")
 
   const reader = res.body.getReader()

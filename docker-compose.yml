@@ -76,6 +76,45 @@ services:
       - web-api
     restart: unless-stopped
 
+  # ── Panel (yönetim görünümü) — aynı DB + Chroma'yı okur; şemayı web-api yönetir ──
+  panel-api:
+    build: ./panel-api
+    container_name: folyo-panel-api
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ./panel-api/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://folyo:folyo@db:5432/folyo
+      CHROMA_DIR: /app/chroma_data
+    volumes:
+      - ./panel-api/app:/app/app
+      - ./web-api/chroma_data:/app/chroma_data
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+
+  panel:
+    build:
+      context: ./panel
+      dockerfile: Dockerfile.dev
+    container_name: folyo-panel
+    ports:
+      - "5174:5174"
+    environment:
+      VITE_API_PROXY: http://panel-api:8000
+    volumes:
+      - ./panel/src:/app/src
+      - ./panel/public:/app/public
+      - ./panel/index.html:/app/index.html
+      - ./panel/vite.config.js:/app/vite.config.js
+    depends_on:
+      - panel-api
+    restart: unless-stopped
+
   # Ters proxy (opsiyonel): :8080'den aynı arayüze — /api doğrudan backend'e
   caddy:
     image: caddy:2-alpine

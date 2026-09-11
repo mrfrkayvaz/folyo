@@ -11,6 +11,9 @@ class Segment:
     bbox: list[BBox] = field(default_factory=list)
     order: int = 0
     page_context: str = ""
+    breadcrumbs: list[str] = field(default_factory=list)
+    image_path: str = ""
+    image_kind: str = ""
 
 
 @dataclass
@@ -21,3 +24,6 @@ class Chunk:
     page_context: str
     chunk_index: int
     bbox: list[BBox] = field(default_factory=list)
+    breadcrumbs: list[str] = field(default_factory=list)
+    image_path: str = ""
+    image_kind: str = ""

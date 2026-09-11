@@ -1,22 +1,25 @@
+import asyncio
 import base64
 
 from ..core.config import get_settings
-from ..core.constants import VISION_PROMPTS
+from ..core.enums import ImageKind
+from ..core.prompts import VISION_PROMPTS
 from . import ai
 
 _DEFAULT_MIME = "image/png"
 
-CONTENT_TYPE_BY_TIP = {
-    "chart": "image_caption",
-    "grafik": "image_caption",
-    "diagram": "diagram",
-    "akis": "diagram",
-    "form": "form_data",
-    "fatura": "form_data",
-    "scan": "scanned_page",
-    "scanned": "scanned_page",
-    "photo": "scanned_page",
-    "foto": "scanned_page",
+# Vision modelinin söylediği görsel türü → metadata detayı (image_kind).
+IMAGE_KIND_BY_TIP = {
+    "chart": ImageKind.image_caption.value,
+    "grafik": ImageKind.image_caption.value,
+    "diagram": ImageKind.diagram.value,
+    "akis": ImageKind.diagram.value,
+    "form": ImageKind.form_data.value,
+    "fatura": ImageKind.form_data.value,
+    "scan": ImageKind.scanned_page.value,
+    "scanned": ImageKind.scanned_page.value,
+    "photo": ImageKind.scanned_page.value,
+    "foto": ImageKind.scanned_page.value,
 }
 
 
@@ -75,28 +78,29 @@ async def analyze_image(
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    data = await ai.post_json(
-        url=f"{base}/chat/completions",
-        headers=headers,
-        payload=payload,
-        model=settings.vision_model,
-        subject="Vision",
-    )
-    error = data.get("error")
-    if error:
-        msg = error.get("message") if isinstance(error, dict) else str(error)
-        raise ai.AIError(f"Vision hatası: {msg}")
+    for attempt in range(1, 4):
+        data = await ai.post_json(
+            url=f"{base}/chat/completions",
+            headers=headers,
+            payload=payload,
+            model=settings.vision_model,
+            subject="Vision",
+        )
+        error = data.get("error")
+        if error:
+            msg = error.get("message") if isinstance(error, dict) else str(error)
+            raise ai.AIError(f"Vision hatası: {msg}")
 
-    choices = data.get("choices") or []
-    if not choices:
-        raise ai.AIError("Vision servisi boş yanıt döndü.")
-    content = (choices[0].get("message") or {}).get("content")
-    if isinstance(content, list):
-        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-    text = (content or "").strip()
-    if not text:
-        raise ai.AIError("Vision servisi boş içerik döndürdü.")
-    return text
+        choices = data.get("choices") or []
+        content = (choices[0].get("message") or {}).get("content") if choices else None
+        if isinstance(content, list):
+            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        text = (content or "").strip()
+        if text:
+            return text
+        await asyncio.sleep(attempt * 1.5)
+
+    raise ai.AIError("Vision servisi boş içerik döndürdü.")
 
 
 async def describe_image(
@@ -120,6 +124,7 @@ async def classify_and_describe(
     detail: str = "auto",
     max_tokens: int = 1500,
 ) -> tuple[str, str]:
+    """Görseli sınıflandırıp betimler; `(image_kind, text)` döndürür."""
     raw = await analyze_image(
         image, VISION_PROMPTS["classify_image"], mime=mime, detail=detail, max_tokens=max_tokens
     )
@@ -131,4 +136,4 @@ async def classify_and_describe(
         tip = head.split(":", 1)[1].strip()
         rest = "\n".join(lines[1:]).strip()
         content = rest or content
-    return CONTENT_TYPE_BY_TIP.get(tip, "scanned_page"), content
+    return IMAGE_KIND_BY_TIP.get(tip, ImageKind.scanned_page.value), content

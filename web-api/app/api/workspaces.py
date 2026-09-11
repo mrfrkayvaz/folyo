@@ -43,6 +43,7 @@ async def list_workspaces():
                 {
                     "id": str(ws.id),
                     "name": ws.name,
+                    "summary": ws.summary,
                     "created_at": ws.created_at.isoformat(),
                     "last_message_at": last.isoformat() if last else None,
                 }
@@ -103,6 +104,8 @@ async def get_workspace(wid: uuid.UUID):
                 "chunk_count": d.chunk_count,
                 "error": d.error,
                 "summary": d.summary,
+                "summary_status": d.summary_status,
+                "summary_error": d.summary_error,
                 "stats": d.stats,
                 "starter_questions": q_by_doc.get(d.id, []),
             }

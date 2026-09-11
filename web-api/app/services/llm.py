@@ -1,5 +1,7 @@
+import asyncio
+
 from ..core.config import get_settings
-from ..core.constants import SYSTEM_PROMPT
+from ..core.prompts import SYSTEM_PROMPT
 from . import ai
 
 
@@ -44,24 +46,38 @@ async def stream_deltas(context_blocks: list[dict], question: str, on_delta):
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    async for obj in ai.stream_json(
-        url=f"{base}/chat/completions",
-        headers=headers,
-        payload=payload,
-        model=settings.llm_model,
-        subject="LLM",
-    ):
-        error = obj.get("error")
-        if error:
-            msg = error.get("message") if isinstance(error, dict) else str(error)
-            raise ai.AIError(f"LLM hatası: {msg}")
-        choices = obj.get("choices") or []
-        if not choices:
-            continue
-        delta = choices[0].get("delta") or {}
-        text = delta.get("content") or delta.get("reasoning") or delta.get("text")
-        if text:
+    for attempt in range(1, 4):
+        emitted = 0
+
+        def emit(text: str) -> None:
+            nonlocal emitted
+            emitted += len(text)
             on_delta(text)
+
+        async for obj in ai.stream_json(
+            url=f"{base}/chat/completions",
+            headers=headers,
+            payload=payload,
+            model=settings.llm_model,
+            subject="LLM",
+        ):
+            error = obj.get("error")
+            if error:
+                msg = error.get("message") if isinstance(error, dict) else str(error)
+                raise ai.AIError(f"LLM hatası: {msg}")
+            choices = obj.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            text = delta.get("content") or delta.get("reasoning") or delta.get("text")
+            if text:
+                emit(text)
+
+        if emitted > 0:
+            return
+        await asyncio.sleep(attempt * 1.5)
+
+    raise ai.AIError("LLM servisi boş içerik döndürdü.")
 
 
 async def complete(messages: list[dict], *, temperature: float | None = None, max_tokens: int = 1024) -> str:
@@ -77,18 +93,21 @@ async def complete(messages: list[dict], *, temperature: float | None = None, ma
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    data = await ai.post_json(
-        url=f"{base}/chat/completions",
-        headers=headers,
-        payload=payload,
-        model=settings.llm_model,
-        subject="LLM",
-    )
-    error = data.get("error")
-    if error:
-        msg = error.get("message") if isinstance(error, dict) else str(error)
-        raise ai.AIError(f"LLM hatası: {msg}")
-    text = _message(data)
-    if not text:
-        raise ai.AIError("LLM servisi boş içerik döndürdü.")
-    return text
+    for attempt in range(1, 4):
+        data = await ai.post_json(
+            url=f"{base}/chat/completions",
+            headers=headers,
+            payload=payload,
+            model=settings.llm_model,
+            subject="LLM",
+        )
+        error = data.get("error")
+        if error:
+            msg = error.get("message") if isinstance(error, dict) else str(error)
+            raise ai.AIError(f"LLM hatası: {msg}")
+        text = _message(data)
+        if text:
+            return text
+        await asyncio.sleep(attempt * 1.5)
+
+    raise ai.AIError("LLM servisi boş içerik döndürdü.")

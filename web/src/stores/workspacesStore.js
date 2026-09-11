@@ -23,7 +23,8 @@ export const useWorkspacesStore = create((set, get) => ({
       const ws = d.workspaces || []
       set((s) => {
         const targetId = s.activeWorkspaceId || getInitialWorkspaceId()
-        const active = targetId ? ws.find((w) => w.id === targetId) || s.activeWorkspace || { id: targetId } : null
+        const found = targetId ? ws.find((w) => w.id === targetId) : null
+        const active = targetId ? { ...(found || { id: targetId }), ...(s.activeWorkspace || {}) } : null
         return {
           workspaces: ws,
           activeWorkspaceId: targetId,
@@ -61,7 +62,9 @@ export const useWorkspacesStore = create((set, get) => ({
         typeof wsOrId === "string"
           ? s.workspaces.find((w) => w.id === wsOrId) || { id: wsOrId }
           : wsOrId
+      const list = id && wsObj?.name ? s.workspaces.map((w) => (w.id === id ? { ...w, ...wsObj } : w)) : s.workspaces
       return {
+        workspaces: list,
         activeWorkspaceId: id || null,
         activeWorkspace: wsObj || null,
       }

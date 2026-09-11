@@ -116,4 +116,22 @@ Sırada: Adım 7 (TESTING.md kalibrasyon + arch.md senkronu) + iki canlı doğru
 - Doğrulama: migrasyon canlı, gate probu (legacy belge done sayılır ✓), birim testler (workspace üretimi mock'lu + 1–6 soru), compile, vite, container reload.
 - Mevcut workspace'lerin özeti henüz üretilmedi (kredi kuralı) — sıradaki yükleme/silmede otomatik tetiklenir.
 
+**Tablo bağlam satırı eklendi (aynı gün, v1.5-D):** tablo chunk metni `[Tablo: <caption/başlık>]` satırıyla başlıyor (embedding seyrelmesine karşı; Small-to-Big v2'de). `_table_caption` bbox üstü 60pt içindeki kısa bloğu alır, yoksa breadcrumb. Koşul bug'ı (`by0 < tb[1]`) düzeltildi; test yeşil.
+
+**Embedding geçişi: `text-embedding-3-small` → `BAAI/bge-m3` (aynı gün):** dim 1024, chroma/storage/DB temiz sayfa. 1 batch çağrıyla ölçüm: alakalı 0.686 / aynı-belge 0.274 / alakasız 0.248; eskisinde ayrışma yoktu (0.33/0.43). `guard_dense_min` 0.30 → 0.45. Kalibrasyon netliği ciddi arttı — "İncele" modalındaki sinyaller artık gerçekten ayrıştırıyor.
+
+**v1.5 A/B/C tamamlandı (aynı gün):**
+- **A — Görsel kırpma:** ≥eşik gömülü görseller `storage/<doc_id>/crops/p<N>_i<M>.png`'e yazılıyor; metadata'ya `image_path`; yeni `GET /api/documents/{did}/crops/{name}` endpoint; silmede otomatik temizlik. UI kısmı (İncele'de figür) ayrı küçük iş.
+- **B — Breadcrumb:** `Segment/Chunk.breadcrumbs: list[str]` + chunk metnine `[Bölüm: A > B]` enjeksiyonu (`_with_breadcrumb`); Chroma metadata `breadcrumbs` (JSON) + `section_title`. Non-text türler (tablo/kod/görsel) atomik grup.
+- **C — Kod atomik:** monospace (cour/mono/consol) satır bloğu → `content_type=code`, ``` fence'li, bölünmez.
+- Doğrulama: host chroma round-trip + container tam çıkarım (kod fence, crop dosyası, breadcrumb) — hepsi yeşil. Compile + import OK.
+
+**Özet hatası görünürlüğü (aynı gün):** `documents.summary_error` kolonu eklendi. `_enrich_summary` başarısızlıkta sebebi kaydediyor (API hatası: `str(exc)` · JSON değil: ham çıktı kesitli · summary boş). `generate_summary` artık JSON değilse `AIError` fırlatıyor (sebeple). API (`summary_status/summary_error`) + UI (kartta kırmızı hata mesajı, sonsuz "hazırlanıyor…" yerine). Not: geçmiş fail'ler için sebep yok — kuzey pdf'sini yeniden tetiklemek **onayınla** (1 LLM çağrısı).
+
+**Kök neden tespit edildi (canlı yeniden test):** birlikte yüklemede `summary_error="LLM servisi boş içerik döndürdü."` — model eş zamanlı 2 çağrıda birine 200 + boş `choices` döndürüyordu (rate-limit/HTTP değil; bu yüzden eski retry'ler kapsamıyordu). Tek yüklemede `done` ✓.
+
+**Çözüm — boş içerik retry'i:** `llm.complete` (özet/workspace), `llm.stream_deltas` (QA) ve `vision.analyze_image` içerik boşsa 3 denemeye kadar yeniden deniyor (aynı backoff); tükenirse `"…boş içerik döndürdü."`. Mock test: boş(2x)→içerik ✓, tükenme→AIError ✓, stream boş→delta ✓, vision ✓.
+
+**Panel servisi kuruldu (aynı gün):** `panel-api` (FastAPI/uv, OKUMA amaçlı — şema/migrasyon yok, web-api yönetir; aynı Postgres + Chroma okur, `chromadb==1.5.9` sabit) ve `panel` (React/Vite/daisyUI). 3 sütun: workspace'ler → dokümanlar → doküman detayı (Süreç: durum/job/progress/özet + Chroma chunk listesi: tür/sayfa/breadcrumb/image_path/metin). Endpoint'ler: `/api/workspaces`, `/api/workspaces/{id}`, `/api/documents/{id}`. Erişim: panel `:5174`, panel-api `:8001` (compose'a eklendi). Canlı doğrulama: 4 workspace + gerçek doküman (kuzey, 11 chunk, job completed dim 1024, `[Bölüm: …]` prefix'li) + vite derleme ✓.
+
 

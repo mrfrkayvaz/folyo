@@ -187,3 +187,55 @@ Adım 1 (PyMuPDF + Segment/Chunk) ──► Adım 2 (tablo + page_context)
 | Kaynak kod | Adım 0-6 |
 | README.md | Adım 7 |
 | Demo video | Adım 7 sonrası (uçtan uca akış) |
+
+---
+
+## 8. İleri Seviye Katman (v1.5) — kabul edilen iyileştirmeler
+
+> Kaynak: "İleri Seviye Layout-Aware & Hibrit RAG" karar dokümanı, `rag_arch.md` ile tartıldı.
+> Kabul edilenler checkbox'lı; reddedilen/ertelenenler "Kapsam dışı" listesinde.
+
+- [x] **A. Görsel kırpma → `storage/<doc_id>/crops/` + `image_path` metadata** — **TAMAMLANDI** *(14.09)* *(S3 yok — yerel disk)*
+  - `extract._embedded_images` zaten (bbox, PNG) üretiyor → kırpımı `storage/<doc_id>/crops/p<N>_i<M>.png` olarak disk'e yaz.
+  - Chroma metadata'ya `image_path` (göreli yol, ör. `crops/…/p2_i0.png`).
+  - Yeni endpoint: `GET /api/documents/{did}/crops/{name}` → FileResponse (İncele modalında figür gösterecek).
+  - Silme: `storage/<doc_id>/` zaten rm -rf'leniyor → crops otomatik temizlenir.
+  - Kabul: ≥eşik gömülü görsel için dosya + metadata + erişim; tam-sayfa (scanned_page) için kırpım gerekmez.
+  - ✓ Doğrulama: OCR'lı görsel `image_path=p1_i1.png` + dosya var; endpoint eklendi. **UI (İncele'de figür) ayrı küçük iş.**
+
+- [x] **B. Breadcrumb: chunk metnine enjeksiyon + `breadcrumbs[]` + `section_title` metadata** — **TAMAMLANDI** *(14.09)*
+  - Başlık yığını zaten var → `Segment.breadcrumbs: list[str]`'e yapısal taşındı; `section_title` = son eleman.
+  - `chunk_segments`: breadcrumb varsa chunk metni `[Bölüm: A > B]` satırıyla başlar (LLM + BM25 kazanır; metadata düşse bile bağlam kalır).
+  - Chroma metadata: `breadcrumbs` (JSON list) + `section_title`.
+  - OCR/görsel türlerinde breadcrumb yoksa satır eklenmez.
+  - Kabul: chunk başı `[Bölüm: …]` ile; metadata yapısal; geriye dönük uyum korunur.
+  - ✓ Doğrulama: `[Bölüm: BÖLÜM 3…]` enjeksiyonu + chroma round-trip (`breadcrumbs=['A','B']`, `section_title='B'`).
+
+- [x] **C. Kod blokları atomik (`content_type=code`)** — **TAMAMLANDI** *(14.09)*
+  - Monospace (font/baseline) satır gruplarını tespit et → ``` içinde sarmala → `content_type="code"`.
+  - `chunk_segments`: non-text türler (`table/code/image…`) tek grupla atomik — bölünmez.
+  - `ContentType.code` + `CONTENT_TYPE_LABELS.code = "kod"`.
+  - Kabul: kod bloğu tek chunk, fence ile sarılmış, bölünmüyor.
+  - ✓ Doğrulama: `cour` fontlu 3 satır tek `code` segment; text ` ```…``` ` ile; chunk metni breadcrumb'lu.
+
+- [x] **D. Tablo bağlam satırı (retrieval güçlendirme)** — **TAMAMLANDI** *(14.09)*
+  - Small-to-Big v2'ye ertelenir (kapsam dışı); tablo tek chunk kalır.
+  - Tablo chunk metni artık üstteki caption/başlık ile başlıyor: `[Tablo: <caption veya breadcrumb>]` — embedding seyrelmesini azaltır, "2024 bütçesi" tipi sorgularda tabloyu aranabilir yapar.
+  - `_table_caption`: bbox üstündeki (60pt) kısa bloğun ilk satırı; yoksa breadcrumb fallback.
+  - Doğrulama: koşul hatası düzeltildi (`by0 < tb[1]`), `[Tablo: …]` + markdown testi yeşil.
+
+- [x] **E. Embedding → BGE-M3** — **TAMAMLANDI** *(14.09, temiz sayfayla)*
+  - `.env`: `EMBED_MODEL=BAAI/bge-m3` (OpenRouter, **dim 1024**; eskisi 1536 idi → temiz indeks).
+  - chroma_data + storage + Postgres temizlendi; web-api yeni env ile create edildi.
+  - Ölçüm (tek batch çağrı): alakalı 0.686 / aynı-belge alakasız 0.274 / tamamen alakasız 0.248 — text-embedding-3-small'de ayrışma yoktu (~0.33/0.43), şimdi net.
+  - `guard_dense_min` 0.30 → **0.45** (ayrışma boşluğuna göre). BM25 kanalı (kendi rank_bm25) değişmedi; BGE sparse kullanılmıyor.
+  - Kabul: model çalışıyor, boyut 1024, Türkçe ayrım net.
+
+### Kapsam dışı (bilinçli erteleme — v2)
+
+- Docling/Marker layout parser (PyMuPDF kalıyor — vanilla çekirdek)
+- Small-to-Big tablo multi-vector (tablolar zaten tek chunk sığıyor)
+- Qdrant / Milvus / pgvector (Chroma yeterli; `chroma_store` arayüzü swap'a hazır)
+- MinIO / S3 (yerel disk; crops local)
+- Denklem hattı (FOLD — belgelerde denklem yokken açmayız)
+- Çapraz referans çözümü ("Şekil 2'ye göre" bağlama) — v2

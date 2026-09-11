@@ -12,7 +12,7 @@ from ..core.constants import MAX_UPLOAD_SIZE
 from ..core.database import get_factory
 from ..core.enums import DocumentStatus
 from ..models import Document, DocumentQuestion, EmbeddingJob, Workspace
-from ..services import chroma_store, jobs
+from ..services import chroma_store, jobs, upload
 from ..services.jobs import storage_dir
 
 router = APIRouter(prefix="/api", tags=["documents"])
@@ -44,23 +44,9 @@ async def upload_document(wid: uuid.UUID, request: Request):
     ddir = storage_dir(doc.id)
     ddir.mkdir(parents=True, exist_ok=True)
     path = ddir / filename
-    received = 0
-    aborted = False
+    result = await upload.stream_to_disk(request, path, size)
 
-    try:
-        with open(path, "wb") as f:
-            async for chunk in request.stream():
-                f.write(chunk)
-                received += len(chunk)
-                if size and received > size:
-                    aborted = True
-                    break
-    except Exception:
-        aborted = True
-
-    incomplete = size and received < size
-
-    if aborted or incomplete:
+    if result.aborted or result.incomplete:
         async with get_factory()() as s:
             d = await s.get(Document, doc.id)
             if d:
@@ -106,6 +92,8 @@ async def document_status(did: uuid.UUID):
         "chunk_count": d.chunk_count,
         "error": d.error,
         "summary": d.summary,
+        "summary_status": d.summary_status,
+        "summary_error": d.summary_error,
         "stats": d.stats,
         "starter_questions": [q.question for q in qs],
         "embed": {
@@ -169,3 +157,15 @@ async def download_document(did: uuid.UUID):
     if not p.exists():
         raise HTTPException(404, "Dosya depoda yok.")
     return FileResponse(p, filename=d.filename)
+
+
+@router.get("/documents/{did}/crops/{name}")
+async def get_crop(did: uuid.UUID, name: str):
+    async with get_factory()() as s:
+        d = await s.get(Document, did)
+        if not d:
+            raise HTTPException(404, "Belge bulunamadı.")
+    p = storage_dir(did) / "crops" / Path(name).name
+    if not p.exists():
+        raise HTTPException(404, "Kırpım bulunamadı.")
+    return FileResponse(p)

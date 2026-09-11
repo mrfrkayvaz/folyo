@@ -1,0 +1,115 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+/* ─── Folyo özel temalar (Gemini tonları, aydınlık + karanlık) ─────────── */
+@plugin "daisyui/theme" {
+  name: "gemlight";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: #ffffff;
+  --color-base-200: #f2f2f3;
+  --color-base-300: #e2e3e5;
+  --color-base-content: #1f1f1f;
+  --color-primary: #1E88E5;
+  --color-primary-content: #ffffff;
+  --color-secondary: #7048e8;
+  --color-secondary-content: #ffffff;
+  --color-accent: #b83280;
+  --color-accent-content: #ffffff;
+  --color-neutral: #444746;
+  --color-neutral-content: #ffffff;
+  --color-info: #1a73e8;
+  --color-info-content: #ffffff;
+  --color-success: #188038;
+  --color-success-content: #ffffff;
+  --color-warning: #f9ab00;
+  --color-warning-content: #ffffff;
+  --color-error: #d93025;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "gemdark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: #131314;
+  --color-base-200: #1e1f20;
+  --color-base-300: #2b2c2e;
+  --color-base-content: #e8eaed;
+  --color-primary: #1E88E5;
+  --color-primary-content: #0f2442;
+  --color-secondary: #c58af9;
+  --color-secondary-content: #241033;
+  --color-accent: #f4a0c8;
+  --color-accent-content: #3d0f26;
+  --color-neutral: #5f6368;
+  --color-neutral-content: #ffffff;
+  --color-info: #8ab4f8;
+  --color-info-content: #0f2442;
+  --color-success: #81c995;
+  --color-success-content: #0e2c1a;
+  --color-warning: #fdd663;
+  --color-warning-content: #4a3300;
+  --color-error: #f28b82;
+  --color-error-content: #4a110d;
+
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* ─── Genel ince ayar ─────────────────────────────────────────────────────── */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Mesajların yumuşak girişi */
+@keyframes ctx-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ctx-rise {
+  animation: ctx-rise 0.28s ease-out both;
+}
+
+/* Sohbet kaydırma çubuğu (hafif) */
+.ctx-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-base-300) transparent;
+}
+.ctx-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.ctx-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-base-300);
+  border-radius: 999px;
+}
+.ctx-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

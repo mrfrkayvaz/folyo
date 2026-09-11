@@ -45,11 +45,17 @@ def _split(text: str, size: int, overlap: int) -> list[str]:
     return chunks
 
 
+def _with_breadcrumb(text: str, breadcrumbs: list[str]) -> str:
+    if not breadcrumbs:
+        return text
+    return f"[Bölüm: {' > '.join(breadcrumbs)}]\n{text}"
+
+
 def chunk_segments(segments: list[Segment], size: int, overlap: int) -> list[Chunk]:
     groups: list[list[Segment]] = []
     for seg in segments:
         joins = (
-            seg.content_type != "table"
+            seg.content_type == "text"
             and groups
             and groups[-1][0].page_number == seg.page_number
             and groups[-1][0].content_type == seg.content_type
@@ -66,21 +72,24 @@ def chunk_segments(segments: list[Segment], size: int, overlap: int) -> list[Chu
         head = group[0]
         text = "\n".join(s.text for s in group)
         bbox = [box for s in group for box in s.bbox]
-        pieces = [text] if head.content_type == "table" else _split(text, size, overlap)
+        pieces = [text] if head.content_type != "text" else _split(text, size, overlap)
         for piece in pieces:
             chunks.append(
                 Chunk(
-                    text=piece,
+                    text=_with_breadcrumb(piece, head.breadcrumbs),
                     content_type=head.content_type,
                     page_number=head.page_number,
                     page_context=head.page_context,
                     chunk_index=idx,
                     bbox=bbox,
+                    breadcrumbs=head.breadcrumbs,
+                    image_path=head.image_path,
+                    image_kind=head.image_kind,
                 )
             )
             idx += 1
     return chunks
 
 
-async def extract_segments_for(filename: str, path) -> list[Segment]:
-    return await extract_segments(filename, path)
+async def extract_segments_for(filename: str, path, crop_dir=None) -> list[Segment]:
+    return await extract_segments(filename, path, crop_dir=crop_dir)

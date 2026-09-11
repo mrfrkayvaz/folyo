@@ -1,7 +1,8 @@
 from .config import Settings, get_settings
-from .constants import DEFAULT_WORKSPACE_NAME, MAX_UPLOAD_SIZE, SYSTEM_PROMPT
+from .constants import DEFAULT_WORKSPACE_NAME, MAX_UPLOAD_SIZE
 from .database import get_engine, get_factory, get_session, init_db
 from .enums import ChatRole, DocumentStatus, EmbeddingStatus
+from .prompts import SYSTEM_PROMPT
 
 __all__ = [
     "Settings",

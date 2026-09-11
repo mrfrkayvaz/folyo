@@ -1,15 +1,4 @@
-async function jfetch(url, opts = {}) {
-  const res = await fetch(url, opts)
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`
-    try {
-      const body = await res.json()
-      if (body?.detail) msg = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)
-    } catch {}
-    throw new Error(msg)
-  }
-  return res.json()
-}
+import { jfetch } from "../lib/http.js"
 
 export function uploadDocumentXHRAction(workspaceId, file, { onProgress, onDone, onError } = {}) {
   const xhr = new XMLHttpRequest()

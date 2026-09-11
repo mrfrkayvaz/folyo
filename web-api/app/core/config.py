@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     retrieve_bm25_k: int = 8
     rrf_k: int = 60
     context_chunks: int = 5
-    guard_dense_min: float = 0.30
+    guard_dense_min: float = 0.45
     guard_bm25_min: float = 1.0
 
     ocr_langs: str = "tur+eng"

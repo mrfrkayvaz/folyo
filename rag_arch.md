@@ -13,7 +13,7 @@
 | # | Konu | Karar |
 |---|---|---|
 | **C1** | Füzyon yöntemi | **RRF (k=60)**. Min-max normalize + ağırlıklı toplam (`bm25_weight`) terk edildi. |
-| **C2** | Halüsinasyon kalkanı | **Çift ham sinyal:** `dense cosine ≥ 0.30` **VEYA** `ham BM25 ≥ 1.0` (14.09.2026 ölçümüyle kalibre edildi). |
+| **C2** | Halüsinasyon kalkanı | **Çift ham sinyal:** `dense cosine ≥ 0.45` (BGE-M3) **VEYA** `ham BM25 ≥ 1.0` (kalibre edildi). |
 | **C3** | BM25 kapsamı | **Workspace-geneli** bağımsız indeks; lazy in-memory cache + add/delete'te invalidation. Aday-kümesi BM25'i terk edildi. |
 | **C4** | Metadata | `page_number`, `content_type`, `page_context`, `bbox[]` eklendi; **sayfa-farkında** chunking. |
 | **C5** | OCR | **Tesseract (tur+eng)** → yoğunluk testi → gerekirse **Vision LLM**. |
@@ -256,7 +256,7 @@ retrieve_dense_k: int = 8       # dense top-k
 retrieve_bm25_k:  int = 8       # sparse top-k (workspace-geneli)
 rrf_k:            int = 60      # RRF sabiti
 context_chunks:   int = 5       # LLM'e giden chunk sayısı
-guard_dense_min:  float = 0.30  # ham kosinüs eşiği
+guard_dense_min:  float = 0.45  # BGE-M3 (ham kosinüs eşiği)
 guard_bm25_min:   float = 1.0   # ham BM25 eşiği
 ```
 
@@ -322,3 +322,4 @@ Başlangıç soruları, sohbetin **boş durumunda üstte** gösterilir — **yal
 | 14.09.2026 | C1–C8 kilitlendi. Ingestion: PyMuPDF + Tesseract→Vision; `equation` FOLD. Retrieval: workspace BM25 + RRF(k=60) + çift ham sinyal. UX: deterministik kart + non-blocking özet/sorular. Vision ikinci sağlayıcı altyapısı kuruldu (`services/vision.py`, `VISION_PROMPTS`). |
 | 14.09.2026 | **Guardrail kalibrasyonu:** canlı ölçüm (text-embedding-3-small, TR kısa sorgu, 7-chunk korpus): ilgili chunk kosinüsü 0.24–0.42 bandında, BM25 ham ~2.1. `0.72/4.0` bu kombinasyonda ulaşılamazdı → `0.30/1.0`'a çekildi. Sparse kanal yeniden aktif; eşikler `.env`'den değiştirilebilir. |
 | 14.09.2026 | **Workspace düzeyi:** `documents.summary_status` (pending/done/failed) + `workspaces.summary` + `workspaces.summary_docs` (doc-set imzası). Soru sayısı 1–6 (LLM karar verir, eşik yok). Workspace özeti+başlık: imza + gate (pending varsa bekle; hiç done yoksa üretme; failed hariç). Başlık: LLM → `workspaces.name`; ilk-soru fallback'i kaldırıldı. |
+| 14.09.2026 | **Embedding → `BAAI/bge-m3`** (dim 1024; eskisi text-embedding-3-small 1536). Temiz sayfa. Ölçüm: alakalı 0.686 / aynı-belge 0.274 / alakasız 0.248 — eski modelde ayrışma yoktu (0.33/0.43), artık net. `guard_dense_min` 0.30 → **0.45**. BM25 kanalı (kendi rank_bm25) değişmedi. |

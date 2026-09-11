@@ -16,9 +16,7 @@ export default function AssistantMessage({ m, onCitationClick }) {
       <Avatar size="h-8 w-8 text-xs" />
       <div className="min-w-0 flex-1 space-y-3">
         {thinking ? (
-          <div className="flex items-center rounded-2xl bg-base-200 px-4 py-3">
-            <span className="loading loading-dots text-base-content/50" />
-          </div>
+          <span className="loading loading-dots text-base-content/50" />
         ) : m.rejected ? (
           <div className="flex items-start gap-3 rounded-2xl border border-dashed border-warning/50 bg-warning/5 px-4 py-3">
             <ShieldIcon className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
@@ -31,7 +29,7 @@ export default function AssistantMessage({ m, onCitationClick }) {
           <>
             <RichText text={m.text} onCitationClick={onCitationClick} />
             {m.streaming && (
-              <span className="ml-0.5 inline-block animate-pulse text-primary" aria-hidden="true">
+              <span className="ml-0.5 inline-block animate-pulse text-base-content/50" aria-hidden="true">
                 ▍
               </span>
             )}

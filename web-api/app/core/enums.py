@@ -26,11 +26,18 @@ class ChatRole(str, enum.Enum):
 class ContentType(str, enum.Enum):
     text = "text"
     table = "table"
-    image_caption = "image_caption"
     ocr_text = "ocr_text"
-    scanned_page = "scanned_page"
-    form_data = "form_data"
+    image = "image"
+    code = "code"
+
+
+class ImageKind(str, enum.Enum):
+    """Görsel chunk'ının metadata detayı — chunk tipi her zaman `image`'dır."""
+
+    image_caption = "image_caption"
     diagram = "diagram"
+    form_data = "form_data"
+    scanned_page = "scanned_page"
 
 
 class SummaryStatus(str, enum.Enum):

@@ -1,5 +1,3 @@
-import { ChatRole } from "../enums/chatEnums.js"
-
 /**
  * @typedef {Object} CitationSource
  * @property {string} label
@@ -15,10 +13,4 @@ import { ChatRole } from "../enums/chatEnums.js"
  * @property {string} created_at
  */
 
-export const createMessage = ({ id = crypto.randomUUID(), role = ChatRole.USER, text = "", streaming = false }) => ({
-  id,
-  role,
-  text,
-  streaming,
-  sources: [],
-})
+export {}

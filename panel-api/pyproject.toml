@@ -1,0 +1,14 @@
+[project]
+name = "panel-api"
+version = "0.1.0"
+description = "Folyo Panel API — yönetim görünümü (okuma amaçlı)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.31.0",
+    "chromadb==1.5.9",
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "sqlmodel>=0.0.42",
+    "uvicorn[standard]>=0.52.4",
+]

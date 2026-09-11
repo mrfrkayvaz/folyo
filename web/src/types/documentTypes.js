@@ -1,5 +1,3 @@
-import { DocumentStatus } from "../enums/documentEnums.js"
-
 /**
  * @typedef {Object} DocumentItem
  * @property {string} id
@@ -14,11 +12,4 @@ import { DocumentStatus } from "../enums/documentEnums.js"
  * @property {string[]} [starter_questions]
  */
 
-export const createAttachment = ({ id, docId, name, size, status = DocumentStatus.UPLOADING, progress = 0 }) => ({
-  id,
-  docId,
-  name,
-  size,
-  status,
-  progress,
-})
+export {}

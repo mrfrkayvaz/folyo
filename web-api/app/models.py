@@ -41,6 +41,7 @@ class Document(SQLModel, table=True):
     error: str | None = Field(default=None)
     summary: str | None = Field(default=None, sa_column=Column(Text))
     summary_status: str | None = Field(default=None, sa_column=Column(Text))
+    summary_error: str | None = Field(default=None, sa_column=Column(Text))
     stats: dict | None = Field(default=None, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
@@ -95,9 +96,6 @@ class ChatMessage(SQLModel, table=True):
 
 
 __all__ = [
-    "DocumentStatus",
-    "EmbeddingStatus",
-    "ChatRole",
     "Workspace",
     "Document",
     "EmbeddingJob",

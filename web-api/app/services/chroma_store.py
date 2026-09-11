@@ -1,4 +1,5 @@
-import json
+"""Chroma sink: doküman ekleme/silme/query — senkron op'lar thread'de, async dış API."""
+
 import threading
 
 import anyio
@@ -6,7 +7,7 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from ..core.config import get_settings
-from . import bm25_index
+from . import bm25_index, chroma_codec
 from .types import Chunk
 
 _client = None
@@ -44,23 +45,10 @@ def _reset_collection_sync():
             )
 
 
-def _meta(workspace_id: str, document_id: str, name: str, c: Chunk) -> dict:
-    return {
-        "workspace_id": workspace_id,
-        "document_id": document_id,
-        "name": name,
-        "page_number": int(c.page_number),
-        "chunk_index": int(c.chunk_index),
-        "content_type": c.content_type,
-        "page_context": c.page_context,
-        "bbox": json.dumps(c.bbox),
-    }
-
-
 def _add_sync(workspace_id: str, document_id: str, name: str, chunks: list[Chunk], vectors) -> None:
     ids = [f"{document_id}:{c.chunk_index}" for c in chunks]
     documents = [c.text for c in chunks]
-    metas = [_meta(workspace_id, document_id, name, c) for c in chunks]
+    metas = [chroma_codec.chunk_metadata(workspace_id, document_id, name, c) for c in chunks]
     try:
         _col().add(ids=ids, documents=documents, embeddings=vectors.tolist(), metadatas=metas)
     except Exception as e:
@@ -106,47 +94,20 @@ def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
     docs = (res.get("documents") or [[]])[0]
     metas = (res.get("metadatas") or [[]])[0]
     dists = (res.get("distances") or [[]])[0]
-    out = []
-    for i in range(len(ids)):
-        meta = metas[i] or {}
-        try:
-            bbox = json.loads(meta.get("bbox") or "[]")
-        except json.JSONDecodeError:
-            bbox = []
-        out.append(
-            {
-                "doc_id": meta.get("document_id", ""),
-                "chunk_index": int(meta.get("chunk_index", 0)),
-                "page_number": int(meta.get("page_number", 1)),
-                "content_type": meta.get("content_type", "text"),
-                "page_context": meta.get("page_context", ""),
-                "bbox": bbox,
-                "name": meta.get("name", "?"),
-                "text": docs[i] or "",
-                "score": round(1.0 - float(dists[i]), 4) if dists else 0.0,
-            }
-        )
-    return out
+    return [
+        chroma_codec.parse_query_row(metas[i] or {}, docs[i] or "", dists[i] if i < len(dists) else None)
+        for i in range(len(ids))
+    ]
 
 
 def _get_ws_sync(workspace_id: str) -> list[dict]:
     res = _col().get(where={"workspace_id": workspace_id}, include=["documents", "metadatas"])
     docs = res.get("documents") or []
     metas = res.get("metadatas") or []
-    out = []
-    for i in range(len(docs)):
-        meta = metas[i] or {}
-        out.append(
-            {
-                "doc_id": meta.get("document_id", ""),
-                "chunk_index": int(meta.get("chunk_index", 0)),
-                "page_number": int(meta.get("page_number", 1)),
-                "content_type": meta.get("content_type", "text"),
-                "name": meta.get("name", "?"),
-                "text": docs[i] or "",
-            }
-        )
-    return out
+    return [
+        chroma_codec.parse_get_row(metas[i] or {}, docs[i] or "")
+        for i in range(len(docs))
+    ]
 
 
 async def add(workspace_id, document_id, name, chunks: list[Chunk], vectors) -> None:
