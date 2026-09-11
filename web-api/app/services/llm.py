@@ -23,12 +23,40 @@ def _message(obj: dict) -> str:
     return (content or "").strip()
 
 
+def _context_label(c: dict) -> str:
+    """Bağlam bloğu künyesi: belge, sayfa, parça + tip (görsele öz: `görsel: belge_id/dosya_adı`)."""
+    parts = [c["name"], f"sayfa {c.get('page_number', 1)}", f"parça {c['chunk_index'] + 1}"]
+    if c.get("content_type"):
+        parts.append(f"tip: {c['content_type']}")
+    if c.get("content_type") == "image" and c.get("image_path"):
+        parts.append(f"görsel: {c.get('doc_id', '?')}/{c['image_path']}")
+    return "[" + ", ".join(parts) + "]"
+
+
+def _user_content(context: str, question: str, context_blocks: list[dict]) -> str:
+    """Kullanıcı mesajı: bağlam + bu soruda kullanılabilir görseller + soru."""
+    content = f"BAĞLAM (yüklenen belgelerden alıntılar):\n\n{context}"
+    avail = [
+        f"[Görsel: {c.get('doc_id', '?')}/{c['image_path']}]"
+        for c in context_blocks
+        if c.get("content_type") == "image" and c.get("image_path")
+    ]
+    if avail:
+        content += (
+            "\n\nKULLANILABİLİR GÖRSELLER: "
+            + ", ".join(avail)
+            + "\nCevabında bu görsellerden birinin içeriğini kullandıysan, yer tutucuyu görselin "
+            + "olması gereken noktaya satır içi yerleştir (listeden birebir kopyala, değiştirme)."
+        )
+    return f"{content}\n\nKullanıcı sorusu: {question}"
+
+
 async def stream_deltas(context_blocks: list[dict], question: str, on_delta):
     settings = get_settings()
     api_key, base = _auth(settings)
 
     context = "\n\n".join(
-        f"[{c['name']}, sayfa {c.get('page_number', 1)}, parça {c['chunk_index'] + 1}]\n{c['text']}"
+        f"{_context_label(c)}\n{c['text']}"
         for c in context_blocks
     )
     payload = {
@@ -37,7 +65,7 @@ async def stream_deltas(context_blocks: list[dict], question: str, on_delta):
             {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": f"BAĞLAM (yüklenen belgelerden alıntılar):\n\n{context}\n\nKullanıcı sorusu: {question}",
+                "content": _user_content(context, question, context_blocks),
             },
         ],
         "include_reasoning": False,

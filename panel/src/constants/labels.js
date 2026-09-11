@@ -4,11 +4,6 @@ export const CONTENT_TYPE_LABELS = {
   ocr_text: "OCR metni",
   image: "görsel",
   code: "kod",
-  // Eski değerler — önceden embedlenmiş belgeler için okunur görünsün.
-  image_caption: "görsel",
-  diagram: "görsel",
-  form_data: "görsel",
-  scanned_page: "görsel",
 }
 
 export const IMAGE_KIND_LABELS = {

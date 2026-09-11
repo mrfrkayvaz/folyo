@@ -31,15 +31,6 @@ class ContentType(str, enum.Enum):
     code = "code"
 
 
-class ImageKind(str, enum.Enum):
-    """Görsel chunk'ının metadata detayı — chunk tipi her zaman `image`'dır."""
-
-    image_caption = "image_caption"
-    diagram = "diagram"
-    form_data = "form_data"
-    scanned_page = "scanned_page"
-
-
 class SummaryStatus(str, enum.Enum):
     pending = "pending"
     done = "done"

@@ -2,25 +2,10 @@ import asyncio
 import base64
 
 from ..core.config import get_settings
-from ..core.enums import ImageKind
 from ..core.prompts import VISION_PROMPTS
 from . import ai
 
 _DEFAULT_MIME = "image/png"
-
-# Vision modelinin söylediği görsel türü → metadata detayı (image_kind).
-IMAGE_KIND_BY_TIP = {
-    "chart": ImageKind.image_caption.value,
-    "grafik": ImageKind.image_caption.value,
-    "diagram": ImageKind.diagram.value,
-    "akis": ImageKind.diagram.value,
-    "form": ImageKind.form_data.value,
-    "fatura": ImageKind.form_data.value,
-    "scan": ImageKind.scanned_page.value,
-    "scanned": ImageKind.scanned_page.value,
-    "photo": ImageKind.scanned_page.value,
-    "foto": ImageKind.scanned_page.value,
-}
 
 
 def _auth(settings) -> tuple[str, str]:
@@ -117,23 +102,14 @@ async def describe_image(
     return await analyze_image(image, prompt, mime=mime, detail=detail, max_tokens=max_tokens)
 
 
-async def classify_and_describe(
+async def describe_content(
     image: bytes,
     *,
     mime: str = _DEFAULT_MIME,
     detail: str = "auto",
     max_tokens: int = 1500,
-) -> tuple[str, str]:
-    """Görseli sınıflandırıp betimler; `(image_kind, text)` döndürür."""
-    raw = await analyze_image(
-        image, VISION_PROMPTS["classify_image"], mime=mime, detail=detail, max_tokens=max_tokens
+) -> str:
+    """Görseli metne döker: yazı içerikliyse yazıları çıkarır, değilse yorumlar."""
+    return await analyze_image(
+        image, VISION_PROMPTS["describe"], mime=mime, detail=detail, max_tokens=max_tokens
     )
-    lines = raw.strip().splitlines()
-    head = (lines[0] if lines else "").lstrip().replace("İ", "i").lower()
-    tip = "scan"
-    content = raw.strip()
-    if head.startswith(("tip:", "tür:", "type:")):
-        tip = head.split(":", 1)[1].strip()
-        rest = "\n".join(lines[1:]).strip()
-        content = rest or content
-    return IMAGE_KIND_BY_TIP.get(tip, ImageKind.scanned_page.value), content

@@ -1,12 +1,17 @@
 /** Minik Markdown ayrıştırıcı: atıf etiketi + kalın/kod/italik satır içi, bloklar. */
 
 const INLINE_SPLIT =
-  /(\[\s*[^\]]*?parça(?:lar)?\b[^\]]*?\]|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/gi
+  /(\[\s*[^\]]*?parça(?:lar)?\b[^\]]*?\]|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[Görsel:[^\]]*\])/gi
 
 const CITATION_RE = /^\[\s*(.+?)\s*,\s*(?:sayfa\s*(\d+)\s*,\s*)?parça(?:lar)?\s*([^\]]+?)\s*\]$/i
 
+const IMAGE_MARKER_RE = /^\[Görsel:\s*([^\]]+?)\s*\]$/i
+
 export function parseInline(text) {
   return text.split(INLINE_SPLIT).filter(Boolean).map((p) => {
+    const imageMarker = p.match(IMAGE_MARKER_RE)
+    if (imageMarker) return { kind: "image", path: imageMarker[1].trim() }
+
     const m = p.match(CITATION_RE)
     if (m) {
       const filename = m[1].trim()

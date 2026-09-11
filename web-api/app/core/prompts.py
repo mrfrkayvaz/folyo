@@ -10,10 +10,15 @@ SYSTEM_PROMPT = (
     "3. Cevap verirken kaynağa atıfta bulun: [BelgeAdı, sayfa N, parça M] şeklinde."
     " Sayfa ve parça numaralarını bağlamdaki etiketlerden aynen al.\n"
     "4. Türkçe soruya Türkçe, İngilizce soruya İngilizce cevap ver.\n"
-    "5. Kısa ve öz ol; liste kullanacaksan madde işaretleriyle yaz."
+    "5. Kısa ve öz ol; liste kullanacaksan madde işaretleriyle yaz.\n"
+    "6. Görsel içerikli bir parçadan (tip: image) yararlandıysan görselin anlatıldığı yere "
+    "MUTLAKA satır içi yer tutucu bırak: `[Görsel: belge_id/dosya_adı]`. Yer tutucuyu künyedeki "
+    "`görsel:` etiketinden birebir kopyala ve görselin metinde olması gereken noktaya yerleştir "
+    "(görselin anlatıldığı bölümün hemen altına, ayrı bir satır olarak). Etiketi atlama, "
+    "değiştirme veya cevabın sonuna iliştirme."
 )
 
-# Vision LLM prompt'ları — OCR yetersiz kaldığında; anahtar = ImageKind (metadata detayı).
+# Vision LLM prompt'ları — OCR yetersiz kaldığında (görsel içeriğini metne dönüştürür).
 VISION_PROMPTS = {
     "scanned_page": (
         "Bu, taranmış bir belge sayfasının görüntüsüdür. OCR ile güvenilir metin çıkarılamadı.\n"
@@ -25,42 +30,23 @@ VISION_PROMPTS = {
         "4. Tabloları Markdown tablo olarak ver. El yazısı, mühür ve imza varsa kısaca belirt.\n"
         "5. Sadece çıktı metnini döndür; açıklama veya başlık ekleme."
     ),
-    "image_caption": (
-        "Bu, bir belge içindeki grafik, şema veya görselin görüntüsüdür.\n"
-        "Görevin: görseli, belge üzerinden soru-cevap yapılabilecek analitik bir metne dönüştürmek.\n"
-        "Kurallar:\n"
-        "1. Grafik/şema ise: konusunu, eksenlerini, serilerini, öne çıkan değerleri ve trendi açıkla.\n"
-        "2. Sayıları, birimleri ve etiketleri birebir ve doğru aktar; uydurma.\n"
-        "3. Belgenin dilini koru. 2-4 cümle, kısa ve bilgi yoğun.\n"
-        "4. Görselde okunabilir bir metin/tablo varsa onu da aktar."
-    ),
-    "diagram": (
-        "Bu, bir belge içindeki akış şeması / karar ağacı / süreç diyagramının görüntüsüdür.\n"
-        "Görevin: diyagramı yapılandırılmış, aranabilir bir metne dönüştürmek.\n"
-        "Kurallar:\n"
-        "1. Süreci numaralı adımlar hâlinde, karar noktalarını ve dallanmaları açıkça yazarak aktar.\n"
-        "2. Kutulardaki metinleri birebir kullan; yorum katma.\n"
-        "3. Belgenin dilini koru.\n"
-        "4. Diyagram bir akış şemasıysa, adımların sonuna ```mermaid bloğu ekle."
-    ),
-    "form_data": (
-        "Bu, bir form / fatura / dekont / anket görüntüsüdür.\n"
-        "Görevin: form alanlarını yapılandırılmış anahtar-değer listesine dönüştürmek.\n"
-        "Kurallar:\n"
-        "1. Çıktıyı Markdown madde listesi olarak ver: '- Alan: değer'. İşaretli kutuları '[x]', boşları '[ ]' yaz.\n"
-        "2. Fatura no, vergi/TC no, IBAN, tarih, tutar gibi değerleri BİREBİR ve doğru aktar; uydurma.\n"
-        "3. Belgenin dilini koru. Okunamayan değeri [okunamadı] olarak işaretle.\n"
-        "4. Sadece listeyi döndür."
-    ),
-    "classify_image": (
-        "Bu, bir belgeden çıkarılmış görseldir. Görevin: (1) görselin türünü belirlemek, "
-        "(2) içeriğini o türe uygun, aranabilir bir metne dönüştürmek.\n"
-        "Türler: chart (grafik/şema), diagram (akış şeması/karar ağacı), form (fatura/dekont/anket), "
-        "scan (taranmış sayfa / metin belgesi), photo (fotoğraf).\n"
-        "Çıktıyı TAM OLARAK şu formatta ver (ilk satır tür, kalanı içerik):\n"
-        "TİP: chart|diagram|form|scan|photo\n"
-        "<içerik>\n"
-        "Kurallar: sayıları/etiketleri birebir ve doğru aktar; uydurma; belgenin dilini koru; yorum ekleme."
+    "describe": (
+        "Bu, bir belgeden çıkarılmış bir görseldir.\n"
+        "Görevin: görselden alınabilecek HER TÜRLÜ bilgiyi metne aktarmak — ayrıntıları eksik \n"
+        "bırakma, sadece etiketleri sayma.\n"
+        "- Önce görselin ne anlattığını kısaca belirt (ör. \"Bu, Türkiye'nin platolarının dağılımını "
+        "gösteren bir haritadır.\").\n"
+        "- Harita/diyagram/şema: her öğenin yalnız adını değil, nerede olduğunu, hangi bölge/şehir "
+        "sınırları içinde kaldığını, birbirine ve bilinen coğrafyaya göre konumunu da belirt\n"
+        "  (ör. \"Teke Platosu Antalya sınırları içinde, Ege kıyısına yakındır\").\n"
+        "- Grafik: konu, eksenler, seriler, birimler, öne çıkan değerler ve eğilim.\n"
+        "- Tablo/form: hücre ve alan değerlerini birebir aktar.\n"
+        "- Fotoğraf: görünür her şeyi — nesneler, mekân, kişiler, üzerindeki yazı/levha/etiketler, \n"
+        "arka plan ve bağlam.\n"
+        "- Yazı yoğun bir sayfa ise: metni birebir, okuma sırasını koruyarak çıkar.\n"
+        "Kurallar: YALNIZCA görselde görünen veya görselden çıkarılabilen bilgiyi yaz; hiçbir şey "
+        "uydurma, görünmeyeni abartma; sayı, tarih, isim ve etiketleri birebir koru; belgenin dilini "
+        "koru; kapsamlı ol ama gereksiz tekrar yapma."
     ),
 }
 

@@ -2,6 +2,18 @@ import CitationBadge from "./CitationBadge.jsx"
 import CodeBlock from "./CodeBlock.jsx"
 import { parseBlocks, parseInline } from "../lib/markdown.js"
 
+/**
+ * Yer tutucu `[Görsel: belge_id/dosya_adı]` → kırpım URL'i.
+ * Belge kimliği olmayan / hatalı yer tutucular `null` döner (düz metin olarak gösterilir).
+ */
+function imageSrc(path) {
+  const slash = path.indexOf("/")
+  if (slash <= 0 || slash >= path.length - 1) return null
+  const documentId = path.slice(0, slash)
+  const imagePath = path.slice(slash + 1)
+  return `/api/documents/${documentId}/crops/${imagePath}`
+}
+
 function inline(text, onCitationClick) {
   return parseInline(text).map((p, i) => {
     if (p.kind === "citation")
@@ -15,6 +27,19 @@ function inline(text, onCitationClick) {
           onClick={onCitationClick}
         />
       )
+    if (p.kind === "image") {
+      const src = imageSrc(p.path)
+      if (!src) return <span key={i} className="font-mono text-xs text-base-content/60">{p.path}</span>
+      return (
+        <img
+          key={i}
+          src={src}
+          alt={p.path}
+          title={p.path}
+          className="my-2 block max-h-96 w-full rounded-xl border border-base-300 object-contain"
+        />
+      )
+    }
     if (p.kind === "strong") return <strong key={i}>{p.text}</strong>
     if (p.kind === "code")
       return (

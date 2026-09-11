@@ -3,15 +3,14 @@
 Küçük bir görsel, `(content_type, text, image_kind)` üçlüsüne dönüştürülür:
 
 - OCR "çoğu yazıdan oluşuyor" derse → tip `ocr_text`, detay yok.
-- Değilse Vision LLM devreye girer → tip `image`, detay `image_kind`
-  (image_caption | diagram | form_data | scanned_page) metadata'ya yazılır.
+- Değilse Vision LLM görseli metne döker → tip `image`.
 - Vision yoksa ve zorunlu değilse `None` (görsel atlanır).
 """
 
 import anyio
 
 from ...core.config import get_settings
-from ...core.enums import ContentType, ImageKind
+from ...core.enums import ContentType
 from ..types import Segment
 from .. import ocr, vision
 from .constants import PAGE_CONTEXT_CHARS
@@ -39,11 +38,11 @@ async def process_image(
         return None
 
     if classify:
-        kind, text = await vision.classify_and_describe(image_bytes)
-        return ContentType.image.value, text, kind
+        text = await vision.describe_content(image_bytes)
+        return ContentType.image.value, text, ""
 
-    kind = ImageKind.scanned_page.value
-    return ContentType.image.value, await vision.describe_image(image_bytes, kind), kind
+    text = await vision.describe_image(image_bytes, "scanned_page")
+    return ContentType.image.value, text, ""
 
 
 async def image_segments(content: bytes) -> list[Segment]:
