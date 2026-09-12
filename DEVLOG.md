@@ -417,3 +417,11 @@ Arka plan notu: bu oturumda dense iyileştirme zinciri bütünleşti — (1) Chr
 - **web + panel TypeScript:** tüm `src` `.jsx→.tsx`, `.js→.ts`; `tsconfig.json` (strict, bundler), `vite-env.d.ts`; tipli prop'lar, API yanıt tipleri (`Workspace/Document/Chunk/ChatMessage/QaEventMap`), markdown düğüm ağacı tipleri (`InlineNode/Block/ListBlock`), zustand store typing, `npm run typecheck` (`tsc --noEmit`).
 - `web/panel/.env` → `VITE_API_BASE_URL` (aynı-origin `/api` varsayılan; gitignore'da, `.env.example` commit'te).
 - Doğrulama: her iki uygulama `tsc --noEmit` temiz; prod Docker build (Vite build + Caddy) başarılı; statik 200 + `/api` proxy smoke testi geçti.
+
+### 15.09.2026 (P1: Workspace sil 500 — NameError)
+
+**Belirti:** Web'de "Sohbeti Sil" → 500. **Kök neden:** `api/workspaces.py delete_workspace`, `docs` ve `ws` değişkenlerini tanımlamadan kullanıyordu (refactor kalıntısı) → NameError.
+
+**Düzeltme:** ws'yi çek (404 guard), workspace'in belgelerini `sa_select` ile çek, her doc'un `storage` dizinini `rmtree_ignore` ile temizle, `s.delete(ws)` + commit; sonra `chroma_store.delete_workspace(wid)` (Chroma + BM25 temizliği). FK bağımlılıkları DB'de `ondelete=CASCADE` (models.py) — sıralama sorunu yok.
+
+**Doğrulama (lokal):** boş workspace silme 200 `{"deleted":true}` + sonrası GET 404; belge yüklenmiş workspace silme 200 ✓.

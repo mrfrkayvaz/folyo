@@ -178,6 +178,11 @@ async def get_older_messages(
 @router.delete("/{wid}")
 async def delete_workspace(wid: uuid.UUID):
     async with get_factory()() as s:
+        ws = await s.get(Workspace, wid)
+        if not ws:
+            raise HTTPException(404, "Workspace bulunamadı.")
+        docs = (await s.execute(sa_select(Document).where(Document.workspace_id == wid))).scalars().all()
+        # Belge dosyalarını (storage) temizle; FK'lar DB'de ondelete=CASCADE ile halledilir.
         for d in docs:
             await core_fs.rmtree_ignore(storage_dir(d.id))
         await s.delete(ws)
