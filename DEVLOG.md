@@ -373,3 +373,40 @@ Arka plan notu: bu oturumda dense iyileştirme zinciri bütünleşti — (1) Chr
 - Önce: sayfa 2 madde listeleri satır satır chunk (13-18 arası 6 ayrı chunk).
 - Sonra: "Depremin Az Olduğu Alanlar:" + 5 madde → **tek chunk**; "Türkiye'deki Fay Hatları:" + KAF/DAF/BAF → tek chunk; yalnız `➨` segmentleri kayboldu (73→61 segment).
 - Regresyon: kuzey_ruzgari-v2 80 segment/11 chunk değişmedi; sentetik alt-yazı senaryosu 6→2 chunk; diğer PDF'ler hatasız.
+
+### 15.09.2026 (Görsel kaynak gösterimi: tip bilgili tek seferlik block görsel)
+
+**Belirti:** Chat cevabında görsel tipindeki chunk (ör. parça 9) normal metin atıfıyla `[Belge, sayfa N, parça M]` rozetine dönüşüyor, `[Görsel: …]` block görseli hiç çizilmiyordu; model görselden beslenen her bilgiyi ayrı atıflamaya eğilimliydi.
+
+**Karar (kullanıcı):** Kaynak gösterimi tip-bilinçli — metin/denklem tipi → mevcut satır içi `[Belge, sayfa N, parça M]` rozeti (her kullanımda); görsel tipi → `[Görsel: belge_id/dosya_adı]` **block görsel**, cevapta YALNIZCA bir kez, en alakalı noktada. Görsel için ayrıca metin atıfı/`görsel:` etiketi yazılmaz. Frontend `[Görsel: …]`'i zaten `block` `<img>` olarak çiziyor → UI değişikliği gerekmedi.
+
+**Uygulama:**
+- `prompts.py` kural 6: görsel-tipi kaynak = künyede `görsel:` alanı olan parça; `[Görsel: …]` tek kez, block görsel, ek metin atıfı yok, `görsel:` etiketi çıktıya kopyalanmaz; aynı `görsel:` değerli birden çok parça tek kaynaktır.
+- Kural 7: `görsel:` alanı OLMAYAN kaynaklar (metin, denklem) normal satır içi atıf, tekrarlanabilir; alt tarafta liste yok.
+- `llm._user_content`: "KULLANILABİLİR GÖRSELLER" notu yenilendi — tek nokta, tek yer tutucu, görsel için `[Belge, sayfa, parça]` atıfı yok.
+
+**Tip taşıma:** `_context_label` görsel parçalarına `görsel:` alanı koyar (tip + kimlik), metin parçalarında bu alan yoktur → tip LLM'e gider, cevaba "tip:" olarak sızmaz.
+
+### 15.09.2026 (P0: "Yanıt alınırken bir hata oluştu." — QA sessiz patlıyordu)
+
+**Belirti:** Belge yüklenip embedlendikten sonra sorulan sorulara web-api boş SSE (200 + 0 byte) dönüyor; UI "Yanıt alınırken bir hata oluştu." gösteriyor. İnline test (`uv run python`) hep çalışıyor, web-api restart'ı iyileştiriyor.
+
+**Kök neden:** Chroma **SQLite** (`chroma.sqlite3`) dosya tabanlı; **web-api ve web-worker aynı dosyaya erişen iki ayrı süreç**. Uzun ayakta kalan api sürecindeki `chromadb.PersistentClient`, worker'ın (yeni belge embed'i) yazmasından sonra bayatlıyor → `_query_sync`/`get` anında hata → `qa.py gen()` exception'ı **sessizce yutuyordu** (traceback yok) → boş akış → genel hata. Taze süreç = taze istemci → hep çalışıyor; restart = iyileşme. Deliller: başarısız pencerede yalnızca yeni embedlenen workspace sorguları bozuk, 832ms'de boş body, restart sonrası düzeliyor.
+
+**Düzeltmeler:**
+- `api/qa.py`: sessiz yutma kaldırıldı — `error` event `LOG.warning`, exception `LOG.exception` (bir sonraki tekrarında tam traceback log'a düşer); hata mesajı DB yazımı da ayrı try/catch'ta loglanır.
+- `services/chroma_store.py`: **kendi kendini iyileştirme** — `_reset_client()` istemci/collection singleton'ını sıfırlar; `_run_with_reopen_retry()` tüm chroma okuma/yazma işlemlerini sarar: Chroma hatasında istemciyi yeniden açıp 3 denemeye kadar tekrarlar (geçici `database is locked` için kademeli bekleme); boyut uyuşmazlığı (`AIError`) tanısal olduğundan denenmez.
+
+**Doğrulama:** kullanıcının workspace'i (ad9a19b9) üzerinden direct + caddy yolları: meta+delta+done, cevap DB'ye gerçek metin olarak yazıldı (16:45 mesajları).
+
+**Kalıcı mimari not:** asıl çözüm tek yazarlı erişim (Chroma'yi HTTP/single-writer moduna almak) — bu yama o güne kadar api'yi restart'sız kurtarır.
+
+### 15.09.2026 (Özet hatası: "Özet yanıtı JSON değil" — kırık JSON'a çok katmanlı onarım + retry)
+
+**Belirti:** Belge özetleri `summary_status=failed` + "Özet yanıtı JSON değil: '{"summary": …'" — model özet metninin içine kaçışsız `"` koyunca (veya çit/ön-yazı/kuyruk çöpü üretince) tek stratejili `parse_json_blocks` patlıyordu; workspace özetleri de sessizce None'a düşüyordu.
+
+**Düzeltme (`services/summary.py`):**
+- `parse_json_blocks` çok katmanlı: (1) fence/ön-yazı temizliği + `{…}` bölgesi `json.loads`, (2) `JSONDecoder.raw_decode` — kuyruk çöpüne rağmen ilk geçerli nesne, (3) `ast.literal_eval` — Python tarzı tek tırnaklı çıktı, (4) `allow_salvage` ile alan-bazlı regex kurtarma (`summary`/`title`/`questions` — kısmi ama kullanılabilir).
+- `generate_summary`/`generate_workspace`: **ilk deneme sıkı** (`allow_salvage=False`); kırıksa tek katı yeniden deneme (`_strict_nudge` mesajı, temperature 0.5); o da kırıksa salvage kabul. Böylece kısmi kabul yerine önce temiz JSON denenir.
+
+**Doğrulama (canlı):** 6 zorlu girdi testi (kaçışsız tırnak, fence, ön/art yazı, tek tırnak, kuyruk çöpü, tam kırık) — hepsi kurtarıldı; worker restart + 5 `enrich_document` yeniden tetiklendi → **13/13 belge done, 0 failed**; workspace başlığı ("Türkiye'de Platolar ve Deprem Fay Hatları") ve özetleri üretildi.

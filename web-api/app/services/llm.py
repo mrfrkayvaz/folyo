@@ -44,11 +44,11 @@ def _user_content(context: str, question: str, context_blocks: list[dict]) -> st
         content += (
             "\n\nKULLANILABİLİR GÖRSELLER: "
             + ", ".join(avail)
-            + "\nCevabında bu görsellerden birinin içeriğini kullandıysan, yer tutucuyu görselin "
-            + "en alakalı olduğu tek noktaya satır içi yerleştir (listeden birebir kopyala, "
-            + "değiştirme). Bir görseli yalnızca BİR kez göster: aynı görselden gelen bilgiler "
-            + "birden fazlaysa dahi tek yer tutucu koy, tekrarlama ve cevabın altında ayrıca "
-            + "belirtme."
+            + "\nBu görsellerden birinin içeriğini kullandıysan, listeden birebir kopyaladığın "
+            + "[Görsel: ...] yer tutucusunu görselin en alakalı olduğu TEK noktaya koy (blok "
+            + "görsel olarak çizilir). Bir görseli yalnızca BİR kez göster: birden fazla bilgi "
+            + "aynı görseldense de yer tutucuyu tekrarlama ve o görsel için [Belge, sayfa, parça] "
+            + "atıfı yazma."
         )
     return f"{content}\n\nKullanıcı sorusu: {question}"
 

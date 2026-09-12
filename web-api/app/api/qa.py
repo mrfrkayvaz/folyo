@@ -7,11 +7,13 @@ from fastapi.responses import StreamingResponse
 from ..core.constants import ERROR_QA_GENERIC_FAILURE
 from ..core.database import get_factory
 from ..core.enums import ChatRole
+from ..core.logging import get_logger
 from ..models import ChatMessage, Workspace
 from ..schemas.chat import QaBody
 from ..services.rag import qa_events
 
 router = APIRouter(prefix="/api/workspaces", tags=["qa"])
+LOG = get_logger("api.qa")
 
 
 def _sse(event: str, data: dict) -> str:
@@ -54,6 +56,7 @@ async def ask(wid: uuid.UUID, body: QaBody):
                     meta = ev
                 elif ev["type"] == "error":
                     err = ev.get("message") or err
+                    LOG.warning("QA error event (wid=%s): %s", wid, err)
 
             content = acc if acc else (f"⚠️ {err}" if err else ERROR_QA_GENERIC_FAILURE)
             citations = None
@@ -77,15 +80,19 @@ async def ask(wid: uuid.UUID, body: QaBody):
                 )
                 await s.commit()
         except Exception:
-            async with sf() as s:
-                s.add(
-                    ChatMessage(
-                        workspace_id=wid,
-                        role=ChatRole.assistant,
-                        content=ERROR_QA_GENERIC_FAILURE,
-                        citations=None,
+            LOG.exception("QA akışı başarısız (wid=%s, soru=%r)", wid, question)
+            try:
+                async with sf() as s:
+                    s.add(
+                        ChatMessage(
+                            workspace_id=wid,
+                            role=ChatRole.assistant,
+                            content=ERROR_QA_GENERIC_FAILURE,
+                            citations=None,
+                        )
                     )
-                )
-                await s.commit()
+                    await s.commit()
+            except Exception:
+                LOG.exception("QA hata mesajı DB'ye yazılamadı (wid=%s)", wid)
 
     return _stream(gen())

@@ -1,6 +1,7 @@
 """Chroma sink: doküman ekleme/silme/query — senkron op'lar thread'de, async dış API."""
 
 import threading
+import time
 
 import anyio
 import chromadb
@@ -82,6 +83,42 @@ def _reset_collection_sync():
         _recreate_collection_locked()
 
 
+def _reset_client(why: str) -> None:
+    """Chroma istemcisini sıfırlar; bir sonraki erişimde `_col()` taze açar.
+
+    Multi-process kullanımda (web-api + web-worker aynı `chroma.sqlite3` dosyasına
+    yazar/okur) uzun ayakta kalan bir süreçteki istemci, diğer sürecin yazmasından
+    sonra bayatlayıp hata üretebilir. Hatada istemciyi yeniden açmak sorunu
+    restart beklemeden kendi kendine iyileştirir (koleksiyon/veri silinmez).
+    """
+    global _client, _collection
+    with _lock:
+        LOG.warning("Chroma istemcisi sıfırlanıyor: %s", why)
+        _client = None
+        _collection = None
+
+
+def _run_with_reopen_retry(fn, *args, attempts: int = 3):
+    """`fn`'i çalıştırır; Chroma hatasında istemciyi sıfırlayıp yeniden dener.
+
+    Boyut uyuşmazlığı (`AIError`) tanısal hatadır → yeniden denenmez, fırlatılır.
+    Geçici kilit ("database is locked") için denemeler arasında kısa bekleme vardır.
+    """
+    last: Exception | None = None
+    for i in range(attempts):
+        try:
+            return fn(*args)
+        except AIError:
+            raise
+        except Exception as exc:
+            last = exc
+            if i + 1 < attempts:
+                _reset_client(f"{type(exc).__name__}: {exc} (deneme {i + 1})")
+                time.sleep(0.3 * (i + 1))
+    assert last is not None
+    raise last
+
+
 def _ensure_dim(collection, dim: int, model: str) -> None:
     """Koleksiyon boyut bekçisi: embed boyutu uyuşmazsa koleksiyonu ASLA silme.
 
@@ -118,6 +155,20 @@ def _upsert_sync(
 ) -> None:
     """Idempotent batch yazma (Chroma `upsert`): aynı id üzerine tekrar yazılabilir.
     Vektörler numpy olarak geçilir — `tolist()` kopyası yok, bellek etkisi düşük."""
+    _run_with_reopen_retry(
+        _upsert_sync_inner, workspace_id, document_id, name, ids, documents, metas, vectors
+    )
+
+
+def _upsert_sync_inner(
+    workspace_id: str,
+    document_id: str,
+    name: str,
+    ids: list[str],
+    documents: list[str],
+    metas: list[dict],
+    vectors,
+) -> None:
     col = _col()
     dim = int(vectors.shape[1]) if hasattr(vectors, "shape") else len(vectors[0])
     _ensure_dim(col, dim, get_settings().embed_model or "?")
@@ -140,24 +191,32 @@ async def upsert_chunks(
 
 
 def _delete_doc_sync(document_id: str) -> None:
-    try:
-        res = _col().get(where={"document_id": document_id}, include=["metadatas"])
-        metas = res.get("metadatas") or []
-        ws_id = (metas[0] or {}).get("workspace_id") if metas else None
-    except Exception:
-        ws_id = None
-    _col().delete(where={"document_id": document_id})
+    def run():
+        try:
+            res = _col().get(where={"document_id": document_id}, include=["metadatas"])
+            metas = res.get("metadatas") or []
+            ws_id = (metas[0] or {}).get("workspace_id") if metas else None
+        except Exception:
+            ws_id = None
+        _col().delete(where={"document_id": document_id})
+        return ws_id
+
+    ws_id = _run_with_reopen_retry(run)
     if ws_id:
         bm25_index.invalidate(ws_id)
 
 
 def _delete_ws_sync(workspace_id: str) -> None:
-    _col().delete(where={"workspace_id": workspace_id})
+    _run_with_reopen_retry(lambda: _col().delete(where={"workspace_id": workspace_id}))
     bm25_index.invalidate(workspace_id)
     bm25_index.clear_workspace(workspace_id)
 
 
 def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
+    return _run_with_reopen_retry(_query_sync_inner, workspace_id, vec, top_k)
+
+
+def _query_sync_inner(workspace_id: str, vec, top_k: int) -> list[dict]:
     try:
         res = _col().query(
             query_embeddings=[vec.tolist()],
@@ -183,13 +242,16 @@ def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
 
 
 def _get_ws_sync(workspace_id: str) -> list[dict]:
-    res = _col().get(where={"workspace_id": workspace_id}, include=["documents", "metadatas"])
-    docs = res.get("documents") or []
-    metas = res.get("metadatas") or []
-    return [
-        chroma_codec.parse_get_row(metas[i] or {}, docs[i] or "")
-        for i in range(len(docs))
-    ]
+    def run() -> list[dict]:
+        res = _col().get(where={"workspace_id": workspace_id}, include=["documents", "metadatas"])
+        docs = res.get("documents") or []
+        metas = res.get("metadatas") or []
+        return [
+            chroma_codec.parse_get_row(metas[i] or {}, docs[i] or "")
+            for i in range(len(docs))
+        ]
+
+    return _run_with_reopen_retry(run)
 
 
 async def add(workspace_id, document_id, name, chunks: list[Chunk], vectors) -> None:
@@ -208,12 +270,15 @@ async def delete_workspace(workspace_id) -> None:
 
 def _get_doc_sync(document_id: str) -> list[dict]:
     """Bir belgenin tüm chunk'larını (chunk_index sıralı) döndürür — zenginleştirme için."""
-    res = _col().get(where={"document_id": document_id}, include=["documents", "metadatas"])
-    docs = res.get("documents") or []
-    metas = res.get("metadatas") or []
-    rows = [chroma_codec.parse_get_row(metas[i] or {}, docs[i] or "") for i in range(len(docs))]
-    rows.sort(key=lambda r: r["chunk_index"])
-    return rows
+    def run() -> list[dict]:
+        res = _col().get(where={"document_id": document_id}, include=["documents", "metadatas"])
+        docs = res.get("documents") or []
+        metas = res.get("metadatas") or []
+        rows = [chroma_codec.parse_get_row(metas[i] or {}, docs[i] or "") for i in range(len(docs))]
+        rows.sort(key=lambda r: r["chunk_index"])
+        return rows
+
+    return _run_with_reopen_retry(run)
 
 
 async def get_chunks_by_document(document_id) -> list[dict]:
@@ -225,13 +290,16 @@ def _get_ids_sync(ids: list[str]) -> list[dict]:
     """Verilen `doc_id:chunk_index` kimlikleriyle chunk içeriklerini döndürür."""
     if not ids:
         return []
-    res = _col().get(ids=ids, include=["documents", "metadatas"])
-    docs = res.get("documents") or []
-    metas = res.get("metadatas") or []
-    return [
-        chroma_codec.parse_get_row(metas[i] or {}, docs[i] or "")
-        for i in range(len(docs))
-    ]
+    def run() -> list[dict]:
+        res = _col().get(ids=ids, include=["documents", "metadatas"])
+        docs = res.get("documents") or []
+        metas = res.get("metadatas") or []
+        return [
+            chroma_codec.parse_get_row(metas[i] or {}, docs[i] or "")
+            for i in range(len(docs))
+        ]
+
+    return _run_with_reopen_retry(run)
 
 
 async def get_chunks_by_ids(ids: list[str]) -> list[dict]:
