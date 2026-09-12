@@ -18,12 +18,14 @@ async def rmtree_ignore(path: Union[str, Path]) -> None:
 
 
 async def write_bytes(path: Union[str, Path], data: bytes) -> None:
-    """Dosyaya bayt yazar (üst dizinin var olduğu varsayılır)."""
+    """Dosyaya bayt yazar; üst dizin yoksa oluşturur (forEach path)."""
     await anyio.to_thread.run_sync(_write, path, data)
 
 
 def _write(path, data: bytes) -> None:
-    Path(path).write_bytes(data)
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(data)
 
 
 async def read_bytes(path: Union[str, Path]) -> bytes:
