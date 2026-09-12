@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     ocr_min_alnum_ratio: float = 0.75
     ocr_min_words: int = 10
     ocr_min_text_coverage: float = 0.05
+    # Dev CORS: virgülle ayrılmış origin listesi (boşsa CORS middleware eklenmez).
+    # Prod'da frontend aynı-origin /api kullandığından genelde gerekmez.
+    cors_origins: str = (
+        "http://localhost:5173,http://localhost:5174,http://localhost:8080,http://localhost:8081"
+    )
     # Diyagram/infografik bekçisi: OCR kabul edilebilir olsa bile yoğunluk altındaysa
     # görsel tipi chunk üretilir (Vision maliyeti olmadan — OCR metni içeriktir).
     ocr_diagram_max_words: int = 25
