@@ -1,0 +1,16 @@
+# Folyo Web — production Caddyfile (statik SPA + /api → web-api)
+# API upstream: `API_UPSTREAM` env'i (varsayılan: web-api:8000 — Coolify servis adı).
+:80 {
+	# Backend ters proxy — /api öneki korunur (FastAPI rotaları /api altında).
+	handle /api/* {
+		reverse_proxy {$API_UPSTREAM:web-api:8000}
+	}
+
+	# Statik SPA — derin linklerde index.html'e düş (try_files).
+	handle {
+		encode gzip zstd
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

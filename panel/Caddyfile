@@ -1,0 +1,16 @@
+# Folyo Panel — production Caddyfile (statik SPA + /api → panel-api)
+# API upstream: `API_UPSTREAM` env'i (varsayılan: panel-api:8000 — Coolify servis adı).
+:80 {
+	# Backend ters proxy — /api öneki korunur (panel-api rotaları /api altında).
+	handle /api/* {
+		reverse_proxy {$API_UPSTREAM:panel-api:8000}
+	}
+
+	# Statik SPA — derin linklerde index.html'e düş (try_files).
+	handle {
+		encode gzip zstd
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
