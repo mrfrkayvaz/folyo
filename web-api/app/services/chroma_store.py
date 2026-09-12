@@ -162,6 +162,21 @@ async def delete_workspace(workspace_id) -> None:
     await anyio.to_thread.run_sync(_delete_ws_sync, str(workspace_id))
 
 
+def _get_doc_sync(document_id: str) -> list[dict]:
+    """Bir belgenin tüm chunk'larını (chunk_index sıralı) döndürür — zenginleştirme için."""
+    res = _col().get(where={"document_id": document_id}, include=["documents", "metadatas"])
+    docs = res.get("documents") or []
+    metas = res.get("metadatas") or []
+    rows = [chroma_codec.parse_get_row(metas[i] or {}, docs[i] or "") for i in range(len(docs))]
+    rows.sort(key=lambda r: r["chunk_index"])
+    return rows
+
+
+async def get_chunks_by_document(document_id) -> list[dict]:
+    """Belge chunk'larını Chroma'dan çeker (worker zenginleştirme görevi için)."""
+    return await anyio.to_thread.run_sync(_get_doc_sync, str(document_id))
+
+
 def _get_ids_sync(ids: list[str]) -> list[dict]:
     """Verilen `doc_id:chunk_index` kimlikleriyle chunk içeriklerini döndürür."""
     if not ids:

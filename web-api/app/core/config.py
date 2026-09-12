@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     embed_max_concurrency: int = 4     # Embedding batch eşzamanlı tavanı
     # OCR (Tesseract) CPU işidir — sınırsız paralel thread yarışını engelle.
     ocr_max_concurrency: int = 3
+    # ARQ görev kuyruğu (embed/enrich işleri ayrı worker sürecinde çalışır).
+    redis_url: str = "redis://localhost:6379/0"
 
     image_min_px: int = 100
     image_min_side_px: int = 300

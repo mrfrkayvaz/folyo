@@ -35,6 +35,40 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Redis — ARQ iş kuyruğu (embed/enrich görev üretimi)
+  redis:
+    image: redis:7-alpine
+    container_name: folyo-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Embed worker: ARQ tüketicisi — web-api'nin ürettiği embed/enrich işlerini işler.
+  # Aynı web-api imajı + ayrı süreç (arbe suarı event loop'tan bağımsız).
+  web-worker:
+    build: ./web-api
+    container_name: folyo-worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - path: ./web-api/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://folyo:folyo@db:5432/folyo
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./web-api/app:/app/app
+      - ./web-api/chroma_data:/app/chroma_data
+      - ./web-api/storage:/app/storage
+    command: ["uv", "run", "--no-sync", "arq", "app.worker_settings.settings"]
+    restart: unless-stopped
+
   # Backend: kaynak bind-mount + uvicorn --reload → .py kaydet, anında restart
   web-api:
     build: ./web-api
@@ -44,12 +78,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - path: ./web-api/.env  # API anahtarların (yoksa compose hatasız çalışır)
         required: false
     environment:
       # container içi: localhost DEĞİL db servisi (host'taki api localhost kullanır)
       DATABASE_URL: postgresql+asyncpg://folyo:folyo@db:5432/folyo
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./web-api/app:/app/app        # canlı kod
       - ./web-api/chroma_data:/app/chroma_data  # vektör verisi host'ta kalsın

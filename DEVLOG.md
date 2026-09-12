@@ -306,3 +306,15 @@ Doğrulama: canlı döngü upload(PDF)→embedded(2s)→delete→depo temiz ✓ 
 **Kök neden:** markdown yeni ayrıştırıcısında `CitationBadge`'e verilen `label` değişmişti — eski: `p.slice(1,-1)` (tam `"Belge, sayfa N, parça M"`); yeni: `m[1].trim()` (yalnız belge adı). Badge görünür metni `label`ı bastığı için sayfa/parça yalnız tooltip'te kaldı.
 
 **Düzeltme (`lib/markdown.js`):** `label` tam köşeli metne döndü; tıklama (önizleme sayfa/parça atlama) için `filename` ayrıca `m[1]`den tutuluyor. `[Belge: …]`/`[Kaynak: …]` ön ekli varyantlar da tam etiketle çözülüyor. Doğrulama: node birim testi + `vite build` ✓.
+
+### 15.09.2026 (ARQ iş kuyruğu — embed yerine ayrı worker süreci)
+
+**İş yürütme modeli değişti (`asyncio.create_task` → Redis kuyruğu + ayrı worker):**
+- **Redis** servisi (compose, healthcheck) + **`web-worker`** servisi (aynı web-api imajı, `arq app.worker_settings.settings` ile çalışır — 3 görev: `embed_document`, `enrich_document`, `workspace_summary`; `max_jobs=4`, `job_timeout=1800`, `max_tries=3`, `retry_jobs`, keep_result=0).
+- **`core/taskq.py`**: `RedisSettings.from_dsn(redis_url)` pool + `enqueue(name, *args, _defer_by=…)` — web-api görev üretir, worker tüketir; redis yoksa hata → log + belge pending'de kalır (boot'ta recover kuyruğa yeniden atar, idempotent).
+- **`worker_runners.py`** (görev sarmalayıcıları) + **`worker_settings.py`** (arq 0.28 `func()` sözlük ayarları).
+- **Katkılar:** `jobs/embed.run_embed_job` artık worker sürecinde; sonunda `enrich_document` **enqueue** eder (create_task kalmadı). `jobs/enrich` refactor: `enrich_document(ws, doc)` chunk'ları Chroma'dan yeniden okur (kuyruk dayanıklılığı), `schedule_workspace_summary` → `_defer_by=2` ile kuyruğa. `api/documents.upload` → `enqueue("embed_document", …)`; `recover_orphaned_jobs` → create_task yerine enqueue. `chroma_store.get_chunks_by_document`.
+- **Config:** `redis_url` (.env).
+- +++ Worker'ın görev süresi/başarısı `arq` loglarında görünür (`1.85s ← embed_document ● 'ok'`); görev yeniden deneme arq katmanında (retry_jobs).
+
+Doğrulama: compose config ✓; worker "3 functions" ile ayağa kalktı; uçtan uca PDF yükleme → worker `embed_document` 1.85s ok → otomatik `enrich_document` → `embedded`; silme ✓. Not: CP210 — yeni pip paketi (arq) için `docker compose up -d --build web-api web-worker redis` gerekli.

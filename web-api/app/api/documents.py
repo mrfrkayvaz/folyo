@@ -12,6 +12,7 @@ from ..core.constants import MAX_UPLOAD_SIZE
 from ..core.database import get_factory
 from ..core.enums import DocumentStatus
 from ..core.logging import get_logger
+from ..core.taskq import enqueue as taskq_enqueue
 from ..models import Document, DocumentQuestion, EmbeddingJob, Workspace
 from ..services import chroma_store, jobs, upload
 from ..services.extract.constants import SUPPORTED_EXTS
@@ -19,31 +20,6 @@ from ..services.jobs import storage_dir
 
 router = APIRouter(prefix="/api", tags=["documents"])
 LOG = get_logger("api.documents")
-
-
-def _spawn_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filename: str) -> None:
-    """Embed görevini arka planda başlatır; hataları uvicorn logger'ına yazar.
-
-    `asyncio.create_task` fire-and-forget'tır — done-callback olmadan görev hataları
-    sessizce yutulurdu (dbg'de görünmezdi). Bu sarıcı başarısızlığı traceback ile loglar.
-    """
-    task = asyncio.create_task(jobs.run_embed_job(workspace_id, document_id, filename))
-
-    def _log_result(t: asyncio.Task) -> None:
-        try:
-            exc = t.exception()
-        except asyncio.CancelledError:
-            return
-        if exc is not None:
-            LOG.error(
-                "[embed-job] belge %s embed görevi başarısız",
-                document_id,
-                exc_info=(type(exc), exc, exc.__traceback__),
-            )
-
-    task.add_done_callback(_log_result)
-
-
 @router.get("/chunks")
 async def get_chunks(ids: str):
     """`doc_id:chunk_index` kimlikleriyle chunk içeriklerini döndürür (InspectModal).
@@ -133,7 +109,16 @@ async def upload_document(wid: uuid.UUID, request: Request):
             s.add(job)
             await s.commit()
 
-    _spawn_embed_job(wid, doc.id, doc.filename)
+    # Embed görevini ARQ kuyruğuna bırak (ayrı worker süreci tüketir).
+    try:
+        await taskq_enqueue("embed_document", str(wid), str(doc.id), filename)
+    except Exception as exc:
+        LOG.error(
+            "[upload] belge %s embed görevi kuyruğa atılamadı: %s — "
+            "belge pending'de kalacak; redis/worker gelince recover yeniden zamanlayacak.",
+            doc.id,
+            exc,
+        )
     return {"id": str(doc.id), "filename": filename, "status": "pending"}
 
 
@@ -209,7 +194,7 @@ async def delete_document(did: uuid.UUID):
     jobs.request_cancel(str(did))
     await core_fs.rmtree_ignore(storage_dir(did))
     await chroma_store.delete_document(did)
-    jobs.schedule_workspace_summary(ws_id)
+    await jobs.schedule_workspace_summary(ws_id)
     return {"deleted": True}
 
 

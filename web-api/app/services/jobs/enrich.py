@@ -1,4 +1,11 @@
-"""Belge özeti + workspace özeti işlemleri (embed sonrası asenkron zenginleştirme)."""
+"""Belge özeti + workspace özeti işlemleri (embed sonrası zenginleştirme — ARQ kuyruğu).
+
+Bu modüldeki görevler ayrı `web-worker` sürecinde (arq) yürütülür:
+- `enrich_document` — belge özeti + starter sorular; chunk'ları Chroma'dan yeniden okur
+  (kuyruk dayanıklılığı: argüman olarak chunk taşınmaz).
+- `do_workspace_summary` — belge özetlerinin sentezi (workspace başına lock).
+- `schedule_workspace_summary` — workspace özetini 2 sn ertelenmiş kuyruğa bırakır.
+"""
 
 import asyncio
 import uuid
@@ -7,7 +14,13 @@ from sqlmodel import select
 
 from ...core.database import get_factory
 from ...core.enums import SummaryStatus
+from ...core.logging import get_logger
+from ...core.taskq import enqueue as taskq_enqueue
 from ...models import Document, DocumentQuestion, Workspace
+from .. import chroma_store
+from ..types import Chunk
+
+LOG = get_logger("jobs.enrich")
 
 _ws_guard: dict[str, asyncio.Lock] = {}
 
@@ -26,13 +39,34 @@ async def save_summary_status(document_id: uuid.UUID, status: SummaryStatus, err
         pass
 
 
-async def enrich_summary(workspace_id: uuid.UUID, document_id: uuid.UUID, chunks) -> None:
-    """Belge özetini + başlangıç sorularını üretir, tamamlanınca workspace özetini planlar."""
+def _chunks_from_rows(rows: list[dict]) -> list[Chunk]:
+    """Chroma satırlarını özet üretiminin beklediği `Chunk` nesnelerine çevirir."""
+    return [
+        Chunk(
+            text=c["text"],
+            content_type=c.get("content_type", "text"),
+            page_number=c.get("page_number", 1),
+            page_context=c.get("page_context", ""),
+            chunk_index=c.get("chunk_index", 0),
+        )
+        for c in rows
+    ]
+
+
+async def enrich_document(workspace_id: uuid.UUID, document_id: uuid.UUID) -> None:
+    """Belge özetini + başlangıç sorularını üretir; sonunda workspace özetini planlar."""
     from .. import summary as summary_svc
 
     try:
+        # Kuyruk dayanıklılığı: chunk'ları Chroma'dan tekrar oku (görev argümanı taşımaz).
+        rows = await chroma_store.get_chunks_by_document(str(document_id))
+        if not rows:
+            return
+        chunks = _chunks_from_rows(rows)
         await save_summary_status(document_id, SummaryStatus.pending)
         result = await summary_svc.generate_summary(chunks)
+        if not result:
+            return
         async with get_factory()() as s:
             doc = await s.get(Document, document_id)
             if not doc:
@@ -55,22 +89,25 @@ async def enrich_summary(workspace_id: uuid.UUID, document_id: uuid.UUID, chunks
     except Exception as exc:
         await save_summary_status(document_id, SummaryStatus.failed, str(exc)[:800])
     finally:
-        schedule_workspace_summary(workspace_id)
+        await schedule_workspace_summary(workspace_id)
 
 
-def schedule_workspace_summary(workspace_id) -> None:
-    asyncio.create_task(delayed_workspace_summary(workspace_id))
+async def schedule_workspace_summary(workspace_id: uuid.UUID) -> None:
+    """Workspace özeti görevini 2 sn ertelenmiş kuyruğa bırakır (arq `_defer_by`)."""
+    try:
+        await taskq_enqueue("workspace_summary", str(workspace_id), _defer_by=2)
+    except Exception as exc:
+        LOG.warning("[enrich] workspace özeti kuyruğa atılamadı: %s", exc)
 
 
-async def delayed_workspace_summary(workspace_id) -> None:
-    await asyncio.sleep(2)
+async def do_workspace_summary(workspace_id: uuid.UUID) -> None:
+    """Yeni/kotarlanmış belge özetleri varsa workspace özetini yeniden üretir (ws başına lock)."""
     lock = _ws_guard.setdefault(str(workspace_id), asyncio.Lock())
     async with lock:
-        await run_workspace_summary(workspace_id)
+        await _run_workspace_summary(workspace_id)
 
 
-async def run_workspace_summary(workspace_id) -> None:
-    """Yeni/kotarlanmış belge özetleri varsa workspace özetini yeniden üretir."""
+async def _run_workspace_summary(workspace_id: uuid.UUID) -> None:
     from .. import summary as summary_svc
 
     try:

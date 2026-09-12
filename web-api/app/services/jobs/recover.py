@@ -6,7 +6,6 @@ Bu süpürme başlangıçta yalnızca BU işlem ömründen ÖNCE oluşturulmuş 
 durumları sıfırlayıp job'u yeniden zamanlar (yarım Chroma eklemeleri temizlenir).
 """
 
-import asyncio
 from datetime import datetime, timezone
 
 from sqlmodel import and_, or_, select
@@ -14,9 +13,9 @@ from sqlmodel import and_, or_, select
 from ...core.database import get_factory
 from ...core.enums import DocumentStatus, EmbeddingStatus
 from ...core.logging import get_logger
+from ...core.taskq import enqueue as taskq_enqueue
 from ...models import Document, EmbeddingJob
 from .. import chroma_store
-from .embed import run_embed_job
 
 LOG = get_logger("jobs.recover")
 
@@ -57,7 +56,7 @@ async def recover_orphaned_jobs() -> int:
     if not rows:
         return 0
 
-    seen: set[asyncio.Task] = set()
+    queued = 0
     for doc, job in rows:
         # Yarım kalmış Chroma eklemesi olabilir — temizle (idempotent), sonra baştan.
         try:
@@ -78,22 +77,12 @@ async def recover_orphaned_jobs() -> int:
             s.add(j)
             await s.commit()
 
-        task = asyncio.create_task(run_embed_job(d.workspace_id, d.id, d.filename))
+        # Embed görevini ARQ kuyruğuna bırak (worker süreci tüketir).
+        try:
+            await taskq_enqueue("embed_document", str(d.workspace_id), str(d.id), d.filename)
+            queued += 1
+        except Exception as exc:
+            LOG.warning("[embed-recovery] belge %s kuyruğa atılamadı: %s", doc.id, exc)
 
-        def _log(t: asyncio.Task, _did=doc.id) -> None:
-            try:
-                exc = t.exception()
-            except asyncio.CancelledError:
-                return
-            if exc is not None:
-                LOG.warning(
-                    "[embed-recovery] belge %s yeniden deneme başarısız",
-                    _did,
-                    exc_info=(type(exc), exc, exc.__traceback__),
-                )
-
-        task.add_done_callback(_log)
-        seen.add(task)
-
-    LOG.info("[embed-recovery] %d yetim iş yeniden zamanlandı.", len(rows))
-    return len(rows)
+    LOG.info("[embed-recovery] %d yetim iş kuyruğa yeniden atıldı.", queued)
+    return queued

@@ -1,18 +1,23 @@
-"""Belge embed hattı: extract → chunk → embed → Chroma → durum güncellemeleri."""
+"""Belge embed hattı: extract → chunk → embed → Chroma → durum güncellemeleri.
 
-import asyncio
+Bu görev ARQ worker'ında (ayrı süreç) çalışır; web-api yalnızca kuyruğa atar.
+"""
+
 import uuid
 
 from ...core import fs as core_fs
 from ...core.config import get_settings
 from ...core.database import get_factory
 from ...core.enums import DocumentStatus, EmbeddingStatus
+from ...core.logging import get_logger
+from ...core.taskq import enqueue as taskq_enqueue
 from ...models import Document, EmbeddingJob
 from .. import chroma_store, embeddings, ingest
 from .cancel import EmbeddingCancelled, clear as clear_cancel, is_cancelled
-from .enrich import enrich_summary
 from .paths import storage_dir
 from .stats import compute_stats
+
+LOG = get_logger("jobs.embed")
 
 
 async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filename: str) -> None:
@@ -93,7 +98,10 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
                 s.add(job)
             await s.commit()
 
-        asyncio.create_task(enrich_summary(workspace_id, document_id, chunks))
+        try:
+            await taskq_enqueue("enrich_document", str(workspace_id), str(document_id))
+        except Exception as exc:
+            LOG.warning("[embed] %s zenginleştirme kuyruğa atılamadı: %s", document_id, exc)
 
     except EmbeddingCancelled:
         await chroma_store.delete_document(document_id)
