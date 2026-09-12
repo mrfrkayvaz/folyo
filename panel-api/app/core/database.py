@@ -6,6 +6,13 @@ _engine: AsyncEngine | None = None
 _factory: async_sessionmaker | None = None
 
 
+def get_engine() -> AsyncEngine:
+    """Paylaşılan async engine (okuma amaçlı; autoload `sync_engine` kullanır)."""
+    get_factory()
+    assert _engine is not None
+    return _engine
+
+
 def get_factory() -> async_sessionmaker:
     global _engine, _factory
     if _engine is None:

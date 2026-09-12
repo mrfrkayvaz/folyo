@@ -7,6 +7,8 @@ Küçük bir görsel, `(content_type, text, image_kind)` üçlüsüne dönüşt�
 - Vision yoksa ve zorunlu değilse `None` (görsel atlanır).
 """
 
+import asyncio
+
 import anyio
 
 from ...core.config import get_settings
@@ -14,7 +16,20 @@ from ...core.enums import ContentType
 from ..types import Segment
 from .. import ocr, vision
 from .constants import PAGE_CONTEXT_CHARS
+
+# OCR (Tesseract) CPU işidir: görsel işleme paralel akar ama Tesseract yarışı
+# sınırlanır (CPU boğulması / thread güvenliği).
+_OCR_SEM = asyncio.Semaphore(max(1, int(get_settings().ocr_max_concurrency)))
 from .errors import ExtractError
+
+
+def is_diagram_like(stats: dict, settings) -> bool:
+    """OCR metni kabul edilebilir olsa bile yoğunluk çok düşükse diyagram/infografiktir:
+    büyük resimde az ve dağınık sözcük → tip `image` (görsel korunur, Vision çağrısı yok)."""
+    return (
+        stats["word_count"] < settings.ocr_diagram_max_words
+        and stats["text_coverage"] < settings.ocr_diagram_max_coverage
+    )
 
 
 async def process_image(
@@ -25,8 +40,14 @@ async def process_image(
     fail_on_vision_missing: bool,
 ) -> tuple[str, str, str] | None:
     """Görselden `(content_type, text, image_kind)` üretir; kabul edilmezse `None`."""
-    stats = await anyio.to_thread.run_sync(ocr.ocr_image, image_bytes)
+    stats = None
+    async with _OCR_SEM:
+        stats = await anyio.to_thread.run_sync(ocr.ocr_image, image_bytes)
     if ocr.is_mostly_text(stats, settings):
+        if is_diagram_like(stats, settings):
+            # Dağınık etiketli diyagram: OCR çıktısı içerik olarak kalır ama görsel tipinde
+            # chunk üretilir — hem aranabilir (OCR sözcükleri) hem de placeholder ile gösterilir.
+            return ContentType.image.value, stats["text"], "diagram"
         return ContentType.ocr_text.value, stats["text"], ""
 
     if not settings.vision_ready:
@@ -45,7 +66,7 @@ async def process_image(
     return ContentType.image.value, text, ""
 
 
-async def image_segments(content: bytes) -> list[Segment]:
+async def image_segments(content: bytes, crop_dir=None) -> list[Segment]:
     """Tek başına yüklenen görsel dosyası → tek Segment."""
     settings = get_settings()
     ctype, text, kind = await process_image(content, settings, classify=True, fail_on_vision_missing=True)

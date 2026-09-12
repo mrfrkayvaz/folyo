@@ -7,6 +7,9 @@ from . import ai
 
 BATCH_SIZE = 64
 
+# Embedding batch çağrıları paralel akar ama sağlayıcıyı boğmamak için tavan sınırlıdır.
+_EMBED_SEM = asyncio.Semaphore(max(1, int(get_settings().embed_max_concurrency)))
+
 
 def _auth(settings) -> tuple[str, str]:
     api_key = settings.embed_api_key or settings.llm_api_key
@@ -29,23 +32,29 @@ async def embed_texts(texts: list[str], progress=None) -> np.ndarray:
     api_key, base = _auth(settings)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    vectors: list[list[float]] = []
-    for start in range(0, len(texts), BATCH_SIZE):
-        part = texts[start : start + BATCH_SIZE]
-        data = await ai.post_json(
-            url=f"{base}/embeddings",
-            headers=headers,
-            payload={"model": settings.embed_model, "input": part},
-            model=settings.embed_model,
-            subject="Embedding",
-            timeout=300,
-        )
-        items = data.get("data", [])
-        items.sort(key=lambda d: d.get("index", 0))
-        for item in items:
-            vectors.append(item["embedding"])
-        if progress:
-            res = progress(start + len(items))
+    async def _one(offset: int, part: list[str]) -> tuple[int, list[list[float]]]:
+        async with _EMBED_SEM:
+            data = await ai.post_json(
+                url=f"{base}/embeddings",
+                headers=headers,
+                payload={"model": settings.embed_model, "input": part},
+                model=settings.embed_model,
+                subject="Embedding",
+                timeout=300,
+            )
+        items = sorted(data.get("data", []), key=lambda d: d.get("index", 0))
+        return offset, [item["embedding"] for item in items]
+
+    batches = [(start, texts[start : start + BATCH_SIZE]) for start in range(0, len(texts), BATCH_SIZE)]
+    # Batch'ler paralel; per-batch sıra deterministik (offset'e göre yeniden sıralanır).
+    results = await asyncio.gather(*(_one(start, part) for start, part in batches))
+    results.sort(key=lambda r: r[0])
+
+    vectors = [v for _, vs in results for v in vs]
+    if progress:
+        for start, vs in results:
+            done = start + len(vs)
+            res = progress(done)
             if asyncio.iscoroutine(res):
                 await res
 

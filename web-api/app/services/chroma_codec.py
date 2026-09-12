@@ -46,7 +46,11 @@ def parse_get_row(meta: dict, text: str) -> dict:
         "chunk_index": int(meta.get("chunk_index", 0)),
         "page_number": int(meta.get("page_number", 1)),
         "content_type": meta.get("content_type", "text"),
+        "page_context": meta.get("page_context", ""),
+        "breadcrumbs": _json_list(meta.get("breadcrumbs"), []),
+        "section_title": meta.get("section_title", ""),
         "image_path": meta.get("image_path", ""),
+        "image_kind": meta.get("image_kind", ""),
         "name": meta.get("name", "?"),
         "text": text or "",
     }

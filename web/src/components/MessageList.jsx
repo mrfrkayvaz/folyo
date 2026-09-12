@@ -5,9 +5,16 @@ import { ChatRole } from "../enums/chatEnums.js"
 
 export default function MessageList({ messages, onCitationClick }) {
   const endRef = useRef(null)
+  const prevLast = useRef(null)
 
+  // Yalnızca ALT tarafta YENİ mesaj olunca aşağı kaydır (stream güncellemeleri ve
+  // üstten prepend sırasında kullanıcıyı sürükleme/yakalama yok).
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    const lastId = messages.length ? messages[messages.length - 1].id : null
+    if (lastId && lastId !== prevLast.current) {
+      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    }
+    prevLast.current = lastId
   }, [messages])
 
   return (

@@ -1,8 +1,12 @@
 """Harici sabitler: desteklenen uzantılar ve sayfa düzeni eşikleri."""
 
 PDF_EXTS = {".pdf"}
-IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+DOCX_EXTS = {".docx"}
 TEXT_EXTS = {".txt", ".md"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+
+# Upload allowlist'i + hata mesajları için tek kaynak.
+SUPPORTED_EXTS = PDF_EXTS | DOCX_EXTS | TEXT_EXTS | IMAGE_EXTS
 
 HEADER_FOOTER_RATIO = 0.07
 MIN_COLUMN_GAP = 12.0

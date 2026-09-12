@@ -46,6 +46,25 @@ def order_blocks(blocks: list[dict], width: float, height: float, depth: int = 0
     return _sorted_by_pos(blocks)
 
 
+def inject_anchors(ordered: list[dict], anchors: list[dict]) -> list[dict]:
+    """Tablo/görsel gibi geniş blokları XY-cut sıralı metin akışına y-merkezlerine göre eker.
+
+    Birleştirilmiş akışta anchor, y-merkezinin ardına düştüğü ilk metin bloğundan önce
+    konumlanır; böylece tablo/görsel okuma düzenine uygun konuma oturur ve
+    sütun kesimlerini (XY-cut) bozmaz.
+    """
+    if not anchors:
+        return ordered
+    flow = list(ordered)
+    for a in sorted(anchors, key=lambda it: (it["bbox"][1] + it["bbox"][3]) / 2):
+        ay = (a["bbox"][1] + a["bbox"][3]) / 2
+        idx = 0
+        while idx < len(flow) and ay > (flow[idx]["bbox"][1] + flow[idx]["bbox"][3]) / 2:
+            idx += 1
+        flow.insert(idx, a)
+    return flow
+
+
 def body_font_size(items: list[dict]) -> float:
     sizes = [it["size"] for it in items if it["kind"] == "text" and it["size"] >= 4]
     if not sizes:

@@ -1,9 +1,9 @@
 """Belge embed hattı: extract → chunk → embed → Chroma → durum güncellemeleri."""
 
 import asyncio
-import shutil
 import uuid
 
+from ...core import fs as core_fs
 from ...core.config import get_settings
 from ...core.database import get_factory
 from ...core.enums import DocumentStatus, EmbeddingStatus
@@ -40,7 +40,12 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
             await s.commit()
 
         segments = await ingest.extract_segments_for(doc.filename, file_path, storage_dir(document_id) / "crops")
-        chunks = ingest.chunk_segments(segments, settings.chunk_chars, settings.chunk_overlap)
+        chunks = ingest.chunk_segments(
+            segments,
+            settings.chunk_chars,
+            settings.chunk_overlap,
+            table_max_chars=settings.table_max_chars,
+        )
         if not chunks:
             raise ValueError("Belgeden parçalanabilir metin çıkarılamadı.")
 
@@ -92,7 +97,7 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
 
     except EmbeddingCancelled:
         await chroma_store.delete_document(document_id)
-        shutil.rmtree(storage_dir(document_id), ignore_errors=True)
+        await core_fs.rmtree_ignore(storage_dir(document_id))
         async with sf() as s:
             doc = await s.get(Document, document_id)
             if doc:

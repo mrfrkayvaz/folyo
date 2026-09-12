@@ -24,6 +24,7 @@ export function mapApiMessage(m) {
     id: m.id,
     role: m.role,
     text: m.content,
+    createdAt: m.created_at,
     sources: cit?.sources || undefined,
     chunkIds: cit?.chunk_ids || undefined,
     confidence: cit?.confidence ?? undefined,

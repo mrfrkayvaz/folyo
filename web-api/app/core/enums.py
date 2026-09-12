@@ -29,6 +29,7 @@ class ContentType(str, enum.Enum):
     ocr_text = "ocr_text"
     image = "image"
     code = "code"
+    equation = "equation"
 
 
 class SummaryStatus(str, enum.Enum):

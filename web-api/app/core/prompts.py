@@ -48,6 +48,15 @@ VISION_PROMPTS = {
         "uydurma, görünmeyeni abartma; sayı, tarih, isim ve etiketleri birebir koru; belgenin dilini "
         "koru; kapsamlı ol ama gereksiz tekrar yapma."
     ),
+    "equation": (
+        "Bu görsel bir belgeden kırpılmış bağımsız bir matematiksel/fiziksel denklemdir.\n"
+        "Görevin: görseldeki denklemi doğrudan blok LaTeX olarak yaz — `$$ ... $$` içinde.\n"
+        "Kurallar:\n"
+        "1. Yalnızca LaTeX kodunu döndür; açıklama, yorum veya başlık ekleme.\n"
+        "2. Kesirleri \\frac, üst/alt indisleri ^ ve _, Yunan harflerini \\alpha gibi komutlarla yaz.\n"
+        "3. Denklem numarası (ör. (1)) varsa LaTeX'e dahil etme.\n"
+        "4. Çözülemiyorsa yalnızca `\\text{okunamadı}` döndür."
+    ),
 }
 
 # Belge özeti + başlangıç soruları

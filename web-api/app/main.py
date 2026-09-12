@@ -4,11 +4,14 @@ from fastapi import FastAPI
 
 from .api import api_router
 from .core.database import init_db
+from .services.jobs.recover import recover_orphaned_jobs
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await init_db()
+    # Restart/kesintiyle ölmüş embed görevlerini yeniden zamanla (yetim kurtarma).
+    await recover_orphaned_jobs()
     yield
 
 

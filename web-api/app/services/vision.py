@@ -7,6 +7,10 @@ from . import ai
 
 _DEFAULT_MIME = "image/png"
 
+# Tüm Vision akışları (sayfa görselleri, denklem fallback'i, scanner) tek bir ortak
+# eşzamanlılık sınırını paylaşır — paralel çalışır ama sağlayıcıya seri darbe yapmaz.
+_VISION_SEM = asyncio.Semaphore(max(1, int(get_settings().vision_max_concurrency)))
+
 
 def _auth(settings) -> tuple[str, str]:
     api_key = settings.vision_api_key or settings.llm_api_key
@@ -63,27 +67,29 @@ async def analyze_image(
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    for attempt in range(1, 4):
-        data = await ai.post_json(
-            url=f"{base}/chat/completions",
-            headers=headers,
-            payload=payload,
-            model=settings.vision_model,
-            subject="Vision",
-        )
-        error = data.get("error")
-        if error:
-            msg = error.get("message") if isinstance(error, dict) else str(error)
-            raise ai.AIError(f"Vision hatası: {msg}")
+    # API çağrısı semafor içinde: yeniden denemeler de eşzamanlılık tavanını aşamaz.
+    async with _VISION_SEM:
+        for attempt in range(1, 4):
+            data = await ai.post_json(
+                url=f"{base}/chat/completions",
+                headers=headers,
+                payload=payload,
+                model=settings.vision_model,
+                subject="Vision",
+            )
+            error = data.get("error")
+            if error:
+                msg = error.get("message") if isinstance(error, dict) else str(error)
+                raise ai.AIError(f"Vision hatası: {msg}")
 
-        choices = data.get("choices") or []
-        content = (choices[0].get("message") or {}).get("content") if choices else None
-        if isinstance(content, list):
-            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-        text = (content or "").strip()
-        if text:
-            return text
-        await asyncio.sleep(attempt * 1.5)
+            choices = data.get("choices") or []
+            content = (choices[0].get("message") or {}).get("content") if choices else None
+            if isinstance(content, list):
+                content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+            text = (content or "").strip()
+            if text:
+                return text
+            await asyncio.sleep(attempt * 1.5)
 
     raise ai.AIError("Vision servisi boş içerik döndürdü.")
 

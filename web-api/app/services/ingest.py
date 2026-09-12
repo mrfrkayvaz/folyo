@@ -51,15 +51,60 @@ def _with_breadcrumb(text: str, breadcrumbs: list[str]) -> str:
     return f"[Bölüm: {' > '.join(breadcrumbs)}]\n{text}"
 
 
-def chunk_segments(segments: list[Segment], size: int, overlap: int) -> list[Chunk]:
+def _split_table(text: str, size: int) -> list[str]:
+    """Büyük markdown tabloyu satır bazlı böler; her parça ön satırları + başlık/ayırıcıyı korur.
+
+    `[Tablo: etiket]` gibi ön satırlar ve başlık+ayırıcı her parçada tekrarlanır,
+    böylece parçalar bağlamdan kopmaz ve embed girdisi sınırda kalmaz.
+    """
+    lines = text.split("\n")
+    prefix: list[str] = []
+    while lines and not lines[0].startswith("|"):
+        prefix.append(lines.pop(0))
+    head: list[str] = []
+    while lines and len(head) < 2:
+        head.append(lines.pop(0))  # başlık satırı + ```---``` ayırıcı
+    if not head:
+        return [text]
+
+    chunks: list[str] = []
+    buf: list[str] = []
+
+    def body_len() -> int:
+        return len("\n".join(buf))
+
+    def flush() -> None:
+        nonlocal buf
+        if buf:
+            chunks.append("\n".join([*prefix, *head, *buf]))
+            buf = []
+
+    for ln in lines:
+        if buf and body_len() + len(ln) + 1 > size:
+            flush()
+        buf.append(ln)
+    flush()
+    return chunks or [text]
+
+
+def chunk_segments(
+    segments: list[Segment],
+    size: int,
+    overlap: int,
+    table_max_chars: int = 0,
+) -> list[Chunk]:
     groups: list[list[Segment]] = []
+    # `text` ile `equation` aynı grupta birleşebilir — denklemler paragraf bağlamından kopmaz
+    # (sayfa başına 20 denklem = 20 mini chunk olmasın). Diğer türler tek başlarına bölünmez.
+    mergeable: tuple[str, ...] = ("text", "equation")
     for seg in segments:
+        head = groups[-1][0] if groups else None
         joins = (
-            seg.content_type == "text"
-            and groups
-            and groups[-1][0].page_number == seg.page_number
-            and groups[-1][0].content_type == seg.content_type
-            and groups[-1][0].page_context == seg.page_context
+            seg.content_type in mergeable
+            and head is not None
+            and head.page_number == seg.page_number
+            and head.content_type in mergeable
+            and head.page_context == seg.page_context
         )
         if joins:
             groups[-1].append(seg)
@@ -70,14 +115,22 @@ def chunk_segments(segments: list[Segment], size: int, overlap: int) -> list[Chu
     idx = 0
     for group in groups:
         head = group[0]
+        # Karışık grup (metin + denklem) varsa chunk türü `text`; saf denklem grubu `equation`.
+        ctype = "text" if any(s.content_type == "text" for s in group) else head.content_type
         text = "\n".join(s.text for s in group)
         bbox = [box for s in group for box in s.bbox]
-        pieces = [text] if head.content_type != "text" else _split(text, size, overlap)
+        pieces: list[str]
+        if ctype == "text":
+            pieces = _split(text, size, overlap)
+        elif ctype == "table" and table_max_chars > 0 and len(text) > table_max_chars:
+            pieces = _split_table(text, size)
+        else:
+            pieces = [text]
         for piece in pieces:
             chunks.append(
                 Chunk(
                     text=_with_breadcrumb(piece, head.breadcrumbs),
-                    content_type=head.content_type,
+                    content_type=ctype,
                     page_number=head.page_number,
                     page_context=head.page_context,
                     chunk_index=idx,

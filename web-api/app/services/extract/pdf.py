@@ -1,20 +1,57 @@
 """PDF ayrıştırma: sayfa içeriği, gömülü görseller, taranmış sayfa fallback."""
 
+import asyncio
 import io
+import math
+from collections import Counter
 
 import pymupdf
 from PIL import Image
 
+from ...core import fs as core_fs
 from ...core.config import get_settings
 from ...core.enums import ContentType
 from ..types import Segment
-from . import blocks, images, layout
+from . import blocks, equations, images, layout
 from .constants import (
     HEADER_FOOTER_RATIO,
     PAGE_CONTEXT_CHARS,
     PIXMAP_ZOOM,
 )
 from .errors import ExtractError
+
+# Sabit başlık/altbilgi tespiti örnekleme bandı (dikey alanın üst/son yüzdesi).
+REPEAT_SAMPLE_BAND = 0.10
+
+
+def _norm_text(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def _detect_repeats(pages, repeat_ratio: float) -> set[str]:
+    """Üst/son %10 bandında sayfalar arası yinelenen metin kümesi (sabit başlık/altbilgi).
+
+    (normalleştirilmiş metin, y-bandı) çifti sayfaların ≥ repeat_ratio kadarında görülüyorsa
+    suppress listesine girer. Sayfa-bazlı değişen içerik (bölüm başlığı, madde numaraları vb.)
+    tekrar etmediği için listede yer almaz.
+    """
+    counts: Counter[str] = Counter()
+    n = len(pages)
+    band = REPEAT_SAMPLE_BAND
+    for page in pages:
+        h = page.rect.height
+        for b in page.get_text("blocks") or []:
+            if len(b) <= 6 or b[6] != 0:  # type: 0 = metin bloğu
+                continue
+            x0, y0, x1, y1, text = b[0], b[1], b[2], b[3], b[4]
+            if y1 <= h * band or y0 >= h * (1 - band):
+                t = _norm_text(text)
+                if len(t) >= 2 and any(ch.isalnum() for ch in t):
+                    counts[t] += 1
+    threshold = max(2, math.ceil(n * repeat_ratio)) if n else 0
+    if not threshold:
+        return set()
+    return {t for t, c in counts.items() if c >= threshold}
 
 
 async def pdf_segments(content: bytes, crop_dir=None) -> list[Segment]:
@@ -24,9 +61,12 @@ async def pdf_segments(content: bytes, crop_dir=None) -> list[Segment]:
         raise ExtractError(f"PDF okunamadı: {exc}") from exc
 
     try:
+        settings = get_settings()
+        pages = [doc[pno] for pno in range(doc.page_count)]
+        skip_repeats = _detect_repeats(pages, settings.header_footer_repeat_ratio)
         segments: list[Segment] = []
-        for pno in range(doc.page_count):
-            segments.extend(await page_segments(doc[pno], pno + 1, crop_dir))
+        for pno, page in enumerate(pages):
+            segments.extend(await page_segments(page, pno + 1, crop_dir, skip=skip_repeats))
     finally:
         doc.close()
 
@@ -35,15 +75,24 @@ async def pdf_segments(content: bytes, crop_dir=None) -> list[Segment]:
     return segments
 
 
-async def page_segments(page, page_number: int, crop_dir=None) -> list[Segment]:
+async def page_segments(
+    page,
+    page_number: int,
+    crop_dir=None,
+    skip: set[str] | None = None,
+) -> list[Segment]:
     settings = get_settings()
     rect = page.rect
     top = rect.y0 + rect.height * HEADER_FOOTER_RATIO
     bottom = rect.y1 - rect.height * HEADER_FOOTER_RATIO
+    skip_top = rect.y0 + rect.height * REPEAT_SAMPLE_BAND
+    skip_bottom = rect.y1 - rect.height * REPEAT_SAMPLE_BAND
 
     table_list = _tables(page)
     block_data = page.get_text("dict").get("blocks", [])
-    items = blocks.collect_items(block_data, table_list, top, bottom)
+    items = blocks.collect_items(
+        block_data, table_list, top, bottom, skip, skip_top, skip_bottom, page_width=rect.width
+    )
 
     if not items:
         if not _embedded_images(page):
@@ -51,7 +100,10 @@ async def page_segments(page, page_number: int, crop_dir=None) -> list[Segment]:
         return [await scan_segment(page, page_number, rect)]
 
     items = await _image_items(page, rect, settings, items, crop_dir, page_number)
-    ordered = layout.order_blocks(items, rect.width, rect.height)
+    await equations.vision_fixup(page, items, settings)
+    textlike = [it for it in items if it["kind"] in ("text", "code", "equation")]
+    anchors = [it for it in items if it["kind"] not in ("text", "code", "equation")]
+    ordered = layout.inject_anchors(layout.order_blocks(textlike, rect.width, rect.height), anchors)
     return layout.emit_segments(ordered, page_number, layout.body_font_size(items))
 
 
@@ -87,10 +139,25 @@ def _embedded_images(page) -> list:
 
 
 async def _image_items(page, rect, settings, items: list[dict], crop_dir, page_number: int) -> list[dict]:
-    """Gömülü görselleri işler, kırpımları kaydeder ve item listesine ekler."""
+    """Gömülü görselleri işler (OCR/Vision **paralel**), kırpımları kaydeder, item listesine ekler.
+
+    `process_image` çağrıları `gather` ile paralel akar; Vision tarafı global
+    semaforla sınırlıdır. Item sırası (düzen için önemli) sabit kalır.
+    """
+    streams = list(_embedded_image_streams(page, rect, settings))
+    if not streams:
+        return items
+
+    async def _process(bbox_png):
+        bbox, png = bbox_png
+        return await images.process_image(
+            png, settings, classify=True, fail_on_vision_missing=False
+        )
+
+    processed_all = await asyncio.gather(*(_process(s) for s in streams))
+
     idx = 0
-    for bbox, png in _embedded_image_streams(page, rect, settings):
-        processed = await images.process_image(png, settings, classify=True, fail_on_vision_missing=False)
+    for (bbox, png), processed in zip(streams, processed_all):
         if processed is None:
             continue
         ctype, text, kind = processed
@@ -99,7 +166,7 @@ async def _image_items(page, rect, settings, items: list[dict], crop_dir, page_n
             idx += 1
             name = f"p{page_number}_i{idx}.png"
             crop_dir.mkdir(parents=True, exist_ok=True)
-            (crop_dir / name).write_bytes(png)
+            await core_fs.write_bytes(crop_dir / name, png)
             image_path = name
         items.append(
             {

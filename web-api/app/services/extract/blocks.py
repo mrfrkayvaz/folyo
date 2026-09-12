@@ -1,6 +1,7 @@
 """PyMuPDF blok sözlüğünden metin/kod/tablo "item"larını toplar."""
 
 from ...core.enums import ContentType
+from . import equations
 from .tables import table_caption, table_to_markdown
 
 _MONO_MARKERS = ("cour", "mono", "consol")
@@ -34,7 +35,15 @@ def overlaps_table(bbox, table_list) -> bool:
     return False
 
 
-def _text_item(block: dict, top: float, bottom: float, table_list) -> dict | None:
+def _text_item(
+    block: dict,
+    top: float,
+    bottom: float,
+    table_list,
+    skip: set[str] | None = None,
+    skip_top: float = 0.0,
+    skip_bottom: float = float("inf"),
+) -> dict | None:
     bx0, by0, bx1, by1 = block["bbox"]
     if by1 < top or by0 > bottom:
         return None
@@ -55,6 +64,10 @@ def _text_item(block: dict, top: float, bottom: float, table_list) -> dict | Non
     text = "\n".join(p for p in parts if p).strip()
     if not text:
         return None
+    if skip and (by1 <= skip_top or by0 >= skip_bottom):
+        norm = " ".join(text.lower().split())
+        if norm in skip:
+            return None
     if _is_code_block(block):
         return {
             "kind": "code",
@@ -71,13 +84,38 @@ def _text_item(block: dict, top: float, bottom: float, table_list) -> dict | Non
     }
 
 
-def collect_items(block_data: list[dict], table_list, top: float, bottom: float) -> list[dict]:
-    """Sayfa bloğu sözlüğünden metin/kod/tablo item'larını sıralamasız toplar."""
+def collect_items(
+    block_data: list[dict],
+    table_list,
+    top: float,
+    bottom: float,
+    skip: set[str] | None = None,
+    skip_top: float = 0.0,
+    skip_bottom: float = float("inf"),
+    page_width: float = 0.0,
+) -> list[dict]:
+    """Sayfa bloğu sözlüğünden metin/kod/tablo/denklem item'larını sıralamasız toplar.
+
+    `page_width > 0` ise blok denklem tespiti çalışır: denklem bloğu yerel LaTeX'e
+    çevrilmeye çalışılır (`kind = "equation"`), başarısızsa görsel fallback işaretlenir
+    (pdf.py'de `equations.vision_fixup`).
+
+    `skip`: sayfalar arası tekrar eden başlık/altbilgi metin seti; y-bandındaki bloklar
+    bunlardan biriyse elenir (frekans temelli header/footer budaması, rag_arch §A2).
+    """
     items: list[dict] = []
     for block in block_data:
         if block.get("type") != 0:
             continue
-        item = _text_item(block, top, bottom, table_list)
+        bx0, by0, bx1, by1 = block["bbox"]
+        if by1 < top or by0 > bottom:
+            continue
+        if page_width > 0 and equations.is_block_equation(block, page_width):
+            item = equations.equation_item(block)
+            if item:
+                items.append(item)
+            continue
+        item = _text_item(block, top, bottom, table_list, skip, skip_top, skip_bottom)
         if item:
             items.append(item)
 

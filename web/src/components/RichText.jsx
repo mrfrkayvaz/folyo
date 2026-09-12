@@ -1,55 +1,109 @@
+import { useMemo } from "react"
+import katex from "katex"
 import CitationBadge from "./CitationBadge.jsx"
 import CodeBlock from "./CodeBlock.jsx"
 import { parseBlocks, parseInline } from "../lib/markdown.js"
 
-/**
- * Yer tutucu `[Görsel: belge_id/dosya_adı]` → kırpım URL'i.
- * Belge kimliği olmayan / hatalı yer tutucular `null` döner (düz metin olarak gösterilir).
- */
+/** KaTeX ile LaTeX/metin render; hata durumunda ham metni koru (kırma yok). */
+function MathView({ tex, display }) {
+  const html = useMemo(() => {
+    try {
+      return katex.renderToString(tex, {
+        throwOnError: false,
+        displayMode: display,
+        output: "htmlAndMathml",
+        strict: false,
+      })
+    } catch {
+      return null
+    }
+  }, [tex, display])
+  if (html === null) {
+    return <code className="rounded bg-base-300 px-1 py-0.5 font-mono text-[0.85em]">{tex}</code>
+  }
+  if (display) {
+    return (
+      <div
+        className="my-2 overflow-x-auto rounded-lg bg-base-200/40 px-3 py-2 text-center [&_.katex]:text-[1.05em]"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    )
+  }
+  return <span dangerouslySetInnerHTML={{ __html: html }} />
+}
+
+/** Görsel yer tutucusu `[Görsel: belge_id/dosya_adı]` → kırpım URL'i. */
 function imageSrc(path) {
   const slash = path.indexOf("/")
   if (slash <= 0 || slash >= path.length - 1) return null
-  const documentId = path.slice(0, slash)
-  const imagePath = path.slice(slash + 1)
-  return `/api/documents/${documentId}/crops/${imagePath}`
+  return `/api/documents/${path.slice(0, slash)}/crops/${path.slice(slash + 1)}`
 }
 
-function inline(text, onCitationClick) {
-  return parseInline(text).map((p, i) => {
-    if (p.kind === "citation")
-      return (
-        <CitationBadge
-          key={i}
-          label={p.label}
-          filename={p.filename}
-          pageNumber={p.pageNumber}
-          chunkIndex={p.chunkIndex}
-          onClick={onCitationClick}
-        />
-      )
-    if (p.kind === "image") {
-      const src = imageSrc(p.path)
-      if (!src) return <span key={i} className="font-mono text-xs text-base-content/60">{p.path}</span>
-      return (
-        <img
-          key={i}
-          src={src}
-          alt={p.path}
-          title={p.path}
-          className="my-2 block max-h-96 w-full rounded-xl border border-base-300 object-contain"
-        />
-      )
+/** Satır içi düğüm ağacı → React öğeleri (özyinelemeli). */
+function inlineNodes(nodes, onCitationClick) {
+  return nodes.map((n, i) => {
+    switch (n.kind) {
+      case "citation":
+        return (
+          <CitationBadge
+            key={i}
+            label={n.label}
+            filename={n.filename}
+            pageNumber={n.pageNumber}
+            chunkIndex={n.chunkIndex}
+            onClick={onCitationClick}
+          />
+        )
+      case "image": {
+        const src = imageSrc(n.path)
+        if (!src)
+          return (
+            <span key={i} className="font-mono text-xs text-base-content/60">
+              {n.path}
+            </span>
+          )
+        return (
+          <img
+            key={i}
+            src={src}
+            alt={n.path}
+            title={n.path}
+            className="my-2 block max-h-96 w-full rounded-xl border border-base-300 object-contain"
+          />
+        )
+      }
+      case "math":
+        return <MathView key={i} tex={n.tex} display={n.display} />
+      case "strong":
+        return <strong key={i}>{inlineNodes(n.children, onCitationClick)}</strong>
+      case "em":
+        return <em key={i}>{inlineNodes(n.children, onCitationClick)}</em>
+      case "code":
+        return (
+          <code key={i} className="rounded-md bg-base-300 px-1.5 py-0.5 font-mono text-[0.85em]">
+            {n.text}
+          </code>
+        )
+      default:
+        return n.text
     }
-    if (p.kind === "strong") return <strong key={i}>{p.text}</strong>
-    if (p.kind === "code")
-      return (
-        <code key={i} className="rounded-md bg-base-300 px-1.5 py-0.5 font-mono text-[0.85em]">
-          {p.text}
-        </code>
-      )
-    if (p.kind === "em") return <em key={i}>{p.text}</em>
-    return p.text
   })
+}
+
+function renderList(list, onCitationClick) {
+  const Tag = list.type === "ol" ? "ol" : "ul"
+  const cls =
+    list.type === "ol" ? "list-decimal" : "list-disc"
+  return (
+    <Tag className={`space-y-1.5 ps-5 ${cls}`}>
+      {list.items.map((it, j) => (
+        <li key={j}>
+          {inlineNodes(parseInline(it.text), onCitationClick)}
+          {it.nested.length > 0 && <div className="mt-1.5">{it.nested.map((n, k) => <div key={k}>{renderList(n, onCitationClick)}</div>)}</div>}
+        </li>
+      ))}
+    </Tag>
+  )
 }
 
 export default function RichText({ text, onCitationClick }) {
@@ -60,31 +114,16 @@ export default function RichText({ text, onCitationClick }) {
         if (b.type === "p")
           return (
             <p key={i} className="whitespace-pre-wrap">
-              {inline(b.text, onCitationClick)}
+              {inlineNodes(parseInline(b.text), onCitationClick)}
             </p>
           )
         if (b.type === "h")
           return (
             <p key={i} className="pt-1 text-[16px] font-semibold leading-7 text-base-content">
-              {inline(b.text, onCitationClick)}
+              {inlineNodes(parseInline(b.text), onCitationClick)}
             </p>
           )
-        if (b.type === "ul")
-          return (
-            <ul key={i} className="list-disc space-y-1.5 ps-5">
-              {b.items.map((it, j) => (
-                <li key={j}>{inline(it, onCitationClick)}</li>
-              ))}
-            </ul>
-          )
-        if (b.type === "ol")
-          return (
-            <ol key={i} className="list-decimal space-y-1.5 ps-5">
-              {b.items.map((it, j) => (
-                <li key={j}>{inline(it, onCitationClick)}</li>
-              ))}
-            </ol>
-          )
+        if (b.type === "ul" || b.type === "ol") return <div key={i}>{renderList(b, onCitationClick)}</div>
         if (b.type === "code") return <CodeBlock key={i} text={b.text} lang={b.lang} />
         return null
       })}

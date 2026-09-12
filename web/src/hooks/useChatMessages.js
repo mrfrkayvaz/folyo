@@ -1,19 +1,67 @@
-import { useCallback, useState } from "react"
-import { askQAAction } from "../actions/index.js"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { askQAAction, olderMessagesAction } from "../actions/index.js"
 import { SSE_EVENTS } from "../constants/index.js"
 import { mapApiMessage, nid } from "../lib/helpers.js"
 import { useWorkspacesStore } from "../stores/workspacesStore.js"
 
 export function useChatMessages() {
   const [messages, setMessages] = useState([])
+  const [olderAvailable, setOlderAvailable] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const messagesRef = useRef([])
+  const loadingRef = useRef(false)
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   const pushMsg = useCallback((m) => setMessages((prev) => [...prev, m]), [])
   const setMsg = useCallback(
     (id, fn) => setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m))),
     [],
   )
-  const reset = useCallback(() => setMessages([]), [])
-  const setFromApi = useCallback((apiMessages = []) => setMessages(apiMessages.map(mapApiMessage)), [])
+
+  const reset = useCallback(() => {
+    setMessages([])
+    setOlderAvailable(false)
+    setLoadingOlder(false)
+    loadingRef.current = false
+  }, [])
+
+  const setFromApi = useCallback((apiMessages = [], hasMore = false) => {
+    setMessages(apiMessages.map(mapApiMessage))
+    setOlderAvailable(Boolean(hasMore))
+    setLoadingOlder(false)
+    loadingRef.current = false
+  }, [])
+
+  const loadOlder = useCallback(async (workspaceId) => {
+    if (!workspaceId || loadingRef.current) return
+    const oldest = messagesRef.current[0]
+    if (!oldest) return
+
+    loadingRef.current = true
+    setLoadingOlder(true)
+    try {
+      const data = await olderMessagesAction(workspaceId, {
+        beforeAt: oldest.createdAt,
+        beforeId: oldest.id,
+      })
+      const incoming = (data.messages || []).map(mapApiMessage)
+      setMessages((prev) => {
+        const known = new Set(prev.map((m) => m.id))
+        const fresh = incoming.filter((m) => !known.has(m.id))
+        return [...fresh, ...prev] // kronolojik: eskiler başa eklenir
+      })
+      setOlderAvailable(Boolean(data.has_more))
+    } catch {
+      // Ağ hatası: bir daha otomatik denemesin (sayfa yenilenince tekrar dolar).
+      setOlderAvailable(false)
+    } finally {
+      loadingRef.current = false
+      setLoadingOlder(false)
+    }
+  }, [])
 
   const ask = useCallback(
     async (rawText) => {
@@ -88,5 +136,5 @@ export function useChatMessages() {
   const busy = messages.some((m) => m.streaming)
   const chatStarted = messages.length > 0
 
-  return { messages, busy, chatStarted, reset, setFromApi, ask }
+  return { messages, busy, chatStarted, reset, setFromApi, ask, olderAvailable, loadingOlder, loadOlder }
 }
