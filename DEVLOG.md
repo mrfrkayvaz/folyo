@@ -410,3 +410,10 @@ Arka plan notu: bu oturumda dense iyileştirme zinciri bütünleşti — (1) Chr
 - `generate_summary`/`generate_workspace`: **ilk deneme sıkı** (`allow_salvage=False`); kırıksa tek katı yeniden deneme (`_strict_nudge` mesajı, temperature 0.5); o da kırıksa salvage kabul. Böylece kısmi kabul yerine önce temiz JSON denenir.
 
 **Doğrulama (canlı):** 6 zorlu girdi testi (kaçışsız tırnak, fence, ön/art yazı, tek tırnak, kuyruk çöpü, tam kırık) — hepsi kurtarıldı; worker restart + 5 `enrich_document` yeniden tetiklendi → **13/13 belge done, 0 failed**; workspace başlığı ("Türkiye'de Platolar ve Deprem Fay Hatları") ve özetleri üretildi.
+
+### 15.09.2026 (Frontend: XHR→fetch + React projeleri TypeScript'e)
+
+- **XHR kaldırıldı:** `uploadDocumentXHRAction` → `uploadDocumentAction` (modern `fetch`). Fetch'in upload ilerlemesi olmadığından FileBar `%` yerine belirsiz "yükleniyor…" gösterir; iptal handle'ları (abort) kaldırıldı.
+- **web + panel TypeScript:** tüm `src` `.jsx→.tsx`, `.js→.ts`; `tsconfig.json` (strict, bundler), `vite-env.d.ts`; tipli prop'lar, API yanıt tipleri (`Workspace/Document/Chunk/ChatMessage/QaEventMap`), markdown düğüm ağacı tipleri (`InlineNode/Block/ListBlock`), zustand store typing, `npm run typecheck` (`tsc --noEmit`).
+- `web/panel/.env` → `VITE_API_BASE_URL` (aynı-origin `/api` varsayılan; gitignore'da, `.env.example` commit'te).
+- Doğrulama: her iki uygulama `tsc --noEmit` temiz; prod Docker build (Vite build + Caddy) başarılı; statik 200 + `/api` proxy smoke testi geçti.

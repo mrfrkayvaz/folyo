@@ -19,3 +19,7 @@ web-api/.ragdata/
 web-api/storage/
 web-api/chroma_data/
 
+# Frontend ortam dosyaları (yerel backend adresi) — örnekler (.env.example) commit'e girer
+web/.env
+panel/.env
+
