@@ -12,7 +12,7 @@ from ...core.enums import DocumentStatus, EmbeddingStatus
 from ...core.logging import get_logger
 from ...core.taskq import enqueue as taskq_enqueue
 from ...models import Document, EmbeddingJob
-from .. import chroma_store, embeddings, ingest
+from .. import bm25_index, chroma_codec, chroma_store, embeddings, ingest
 from .cancel import EmbeddingCancelled, clear as clear_cancel, is_cancelled
 from .paths import storage_dir
 from .stats import compute_stats
@@ -73,11 +73,38 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
                     s.add(job)
                     await s.commit()
 
-        vectors = await embeddings.embed_texts([c.text for c in chunks], progress=on_progress)
+        if len(chunks) > settings.embed_memory_warning_chunks:
+            LOG.warning(
+                "[embed] belge %s çok parçalı (%d chunk) — vektörler akışla yazılıyor",
+                document_id,
+                len(chunks),
+            )
 
-        await chroma_store.add(str(workspace_id), str(document_id), doc.filename, chunks, vectors)
+        dim_value: int | None = None
 
-        dim = len(vectors[0]) if len(vectors) > 0 else None
+        async def write_batch(offset: int, vecs) -> None:
+            """Tamamlanan her embedding batch'ini idempotent Chroma `upsert` ile yazar."""
+            nonlocal dim_value
+            batch = chunks[offset : offset + len(vecs)]
+            if not batch:
+                return
+            if dim_value is None:
+                dim_value = len(vecs[0])
+            ids = [f"{document_id}:{c.chunk_index}" for c in batch]
+            documents = [c.text for c in batch]
+            metas = [
+                chroma_codec.chunk_metadata(str(workspace_id), str(document_id), doc.filename, c)
+                for c in batch
+            ]
+            await chroma_store.upsert_chunks(
+                str(workspace_id), str(document_id), doc.filename, ids, documents, metas, vecs
+            )
+
+        # Akışlı embed: vektörler RAM'de toplanmaz, her batch bitince Chroma'ya yazılır.
+        await embeddings.embed_batches([c.text for c in chunks], on_batch=write_batch, progress=on_progress)
+        bm25_index.invalidate(workspace_id)
+
+        dim = dim_value
         async with sf() as s:
             doc = await s.get(Document, document_id)
             if doc:

@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     embed_max_concurrency: int = 4     # Embedding batch eşzamanlı tavanı
     # OCR (Tesseract) CPU işidir — sınırsız paralel thread yarışını engelle.
     ocr_max_concurrency: int = 3
+    # Embed akışlı yazma için bilgi eşiği: bu kadar chunk üzerinde warning logluyoruz
+    # (vektörler RAM'de toplanmaz — batch batch kuyruğa/Chroma'ya yazılır).
+    embed_memory_warning_chunks: int = 2000
     # ARQ görev kuyruğu (embed/enrich işleri ayrı worker sürecinde çalışır).
     redis_url: str = "redis://localhost:6379/0"
 

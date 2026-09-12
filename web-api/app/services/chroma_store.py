@@ -76,23 +76,36 @@ def _ensure_dim(collection, dim: int, model: str) -> None:
             pass  # metadata güncellenemezse boyut bekçisi sonraki eklemelerde yine çalışır
 
 
-def _add_sync(workspace_id: str, document_id: str, name: str, chunks: list[Chunk], vectors) -> None:
-    ids = [f"{document_id}:{c.chunk_index}" for c in chunks]
-    documents = [c.text for c in chunks]
-    metas = [chroma_codec.chunk_metadata(workspace_id, document_id, name, c) for c in chunks]
+def _upsert_sync(
+    workspace_id: str,
+    document_id: str,
+    name: str,
+    ids: list[str],
+    documents: list[str],
+    metas: list[dict],
+    vectors,
+) -> None:
+    """Idempotent batch yazma (Chroma `upsert`): aynı id üzerine tekrar yazılabilir.
+    Vektörler numpy olarak geçilir — `tolist()` kopyası yok, bellek etkisi düşük."""
     col = _col()
     dim = int(vectors.shape[1]) if hasattr(vectors, "shape") else len(vectors[0])
     _ensure_dim(col, dim, get_settings().embed_model or "?")
-    try:
-        col.add(ids=ids, documents=documents, embeddings=vectors.tolist(), metadatas=metas)
-    except Exception as exc:
-        if "dimension" in str(exc).lower():
-            raise AIError(
-                f"Embed boyutu koleksiyonla uyuşmuyor ({exc}). Koleksiyon reset edilmedi; "
-                "uygulama yeniden indeksleme gerektirir."
-            ) from exc
-        raise
-    bm25_index.invalidate(workspace_id)
+    col.upsert(ids=ids, documents=documents, embeddings=vectors, metadatas=metas)
+
+
+async def upsert_chunks(
+    workspace_id: str,
+    document_id: str,
+    name: str,
+    ids: list[str],
+    documents: list[str],
+    metas: list[dict],
+    vectors,
+) -> None:
+    """Bir chunk batch'ini Chroma'ya yazar (idempotent — akışlı yazma için)."""
+    await anyio.to_thread.run_sync(
+        _upsert_sync, workspace_id, document_id, name, ids, documents, metas, vectors
+    )
 
 
 def _delete_doc_sync(document_id: str) -> None:

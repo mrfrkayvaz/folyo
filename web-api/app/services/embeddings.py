@@ -24,7 +24,13 @@ def _auth(settings) -> tuple[str, str]:
     return api_key, base
 
 
-async def embed_texts(texts: list[str], progress=None) -> np.ndarray:
+async def embed_batches(texts: list[str], *, on_batch=None, progress=None) -> None:
+    """Batch'leri paralel çeker ve **akışla** tüketir.
+
+    Her tamamlanan batch `on_batch(offset, vectors)` ile çağırana teslim edilir
+    (çağıran Chroma'ya yazar vb.) — tüm vektörler RAM'de birikmez. Sıra
+    deterministik değildir (hangi batch önce biterse o), idempoten yazma buna izin verir.
+    """
     if not texts:
         raise ValueError("Embed edilecek metin yok.")
 
@@ -46,18 +52,37 @@ async def embed_texts(texts: list[str], progress=None) -> np.ndarray:
         return offset, [item["embedding"] for item in items]
 
     batches = [(start, texts[start : start + BATCH_SIZE]) for start in range(0, len(texts), BATCH_SIZE)]
-    # Batch'ler paralel; per-batch sıra deterministik (offset'e göre yeniden sıralanır).
-    results = await asyncio.gather(*(_one(start, part) for start, part in batches))
-    results.sort(key=lambda r: r[0])
+    tasks = [asyncio.create_task(_one(start, part)) for start, part in batches]
 
-    vectors = [v for _, vs in results for v in vs]
-    if progress:
-        for start, vs in results:
-            done = start + len(vs)
+    done = 0
+    for fut in asyncio.as_completed(tasks):
+        offset, vecs = await fut
+        if on_batch is not None:
+            res = on_batch(offset, vecs)
+            if asyncio.iscoroutine(res):
+                await res
+        done = max(done, offset + len(vecs))
+        if progress:
             res = progress(done)
             if asyncio.iscoroutine(res):
                 await res
 
+
+async def embed_texts(texts: list[str], progress=None) -> np.ndarray:
+    """Tüm metinleri embed edip tek matris döndürür (sorgu vektörleri gibi küçük kullanım).
+
+    Büyük kullanımlar (belge embed) için `embed_batches` + akışlı Chroma yazımı tercih edilir.
+    """
+    collected: dict[int, list[list[float]]] = {}
+
+    async def _collect(offset: int, vecs: list[list[float]]) -> None:
+        collected[offset] = vecs
+
+    await embed_batches(texts, on_batch=_collect, progress=progress)
+
+    if not collected:
+        raise ai.AIError("Embedding servisi boş yanıt döndü.")
+    vectors = [v for offset in sorted(collected) for v in collected[offset]]
     if not vectors:
         raise ai.AIError("Embedding servisi boş yanıt döndü.")
 

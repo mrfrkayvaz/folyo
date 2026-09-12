@@ -318,3 +318,11 @@ Doğrulama: canlı döngü upload(PDF)→embedded(2s)→delete→depo temiz ✓ 
 - +++ Worker'ın görev süresi/başarısı `arq` loglarında görünür (`1.85s ← embed_document ● 'ok'`); görev yeniden deneme arq katmanında (retry_jobs).
 
 Doğrulama: compose config ✓; worker "3 functions" ile ayağa kalktı; uçtan uca PDF yükleme → worker `embed_document` 1.85s ok → otomatik `enrich_document` → `embedded`; silme ✓. Not: CP210 — yeni pip paketi (arq) için `docker compose up -d --build web-api web-worker redis` gerekli.
+
+### 15.09.2026 (embed akışlı yazma + idempotent upsert)
+
+**Bellek sınırı / adım-adım vektör yazma:**
+- **`embeddings.embed_batches`** (yeni): batch'ler paralel çekilir, her tamamlanan batch `on_batch(offset, vectors)` ile **akışla** teslim edilir — tüm vektör matrisi RAM'de birikmez. `embed_texts` (sorgu vektörü kullanımı) bu akışı toplayan ince sarmalayıcı oldu (deterministik sıra korunur).
+- **`chroma_store.upsert_chunks`** (yeni): `add` yerine **`upsert`** — aynı id üzerine tekrar yazılabilir (ARQ retry_jobs ile mükemmel uyum: yarıda kalan iş yeniden çalıştırıldığında çakışma yok); vektörler numpy olarak geçilir (`tolist()` kopyası yok). Eski `_add_sync`/`add` kaldırıldı.
+- **`jobs/embed`**: `embed_texts+add` yerine `embed_batches(on_batch=write_batch)` — her 64'lük batch biter bitmez Chroma'ya yazılır; uyarı eşiği `embed_memory_warning_chunks=2000` (aşınca LOG.warning); dim ilk batch'ten alınır; `bm25_index.invalidate` tüm yazım sonunda bir kez.
+- Canlı: tek PDF → worker `embed_document` 1.98s ok → `embedded` (upsert yolu) → silme ✓. Not: worker kod değişikliklerinde `docker compose restart web-worker` gerekir (arq reload'u yok).
