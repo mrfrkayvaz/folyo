@@ -52,15 +52,25 @@ def _text_item(
 
     parts: list[str] = []
     sizes: list[float] = []
+    line_info: list[dict] = []
     bold = False
     for line in block.get("lines", []):
         line_text = "".join(sp.get("text", "") for sp in line.get("spans", []))
         parts.append(line_text)
+        line_sizes: list[float] = []
+        line_bold = False
         for sp in line.get("spans", []):
             if sp.get("text", "").strip():
-                sizes.append(float(sp.get("size", 0)))
-                if sp.get("flags", 0) & 16:
+                sz = float(sp.get("size", 0))
+                is_bold = bool(sp.get("flags", 0) & 16)
+                sizes.append(sz)
+                line_sizes.append(sz)
+                if is_bold:
                     bold = True
+                    line_bold = True
+        line_info.append(
+            {"text": line_text, "size": max(line_sizes) if line_sizes else 0.0, "bold": line_bold}
+        )
     text = "\n".join(p for p in parts if p).strip()
     if not text:
         return None
@@ -81,6 +91,7 @@ def _text_item(
         "text": text,
         "size": max(sizes) if sizes else 0.0,
         "bold": bold,
+        "lines": line_info,
     }
 
 

@@ -91,7 +91,7 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
             if dim_value is None:
                 dim_value = len(vecs[0])
             ids = [f"{document_id}:{c.chunk_index}" for c in batch]
-            documents = [c.text for c in batch]
+            documents = [c.embed_text or c.text for c in batch]
             metas = [
                 chroma_codec.chunk_metadata(str(workspace_id), str(document_id), doc.filename, c)
                 for c in batch

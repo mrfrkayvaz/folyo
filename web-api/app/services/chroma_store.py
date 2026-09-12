@@ -7,13 +7,28 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from ..core.config import get_settings
+from ..core.logging import get_logger
 from . import bm25_index, chroma_codec
 from .ai import AIError
 from .types import Chunk
 
+LOG = get_logger("chroma")
+
 _client = None
 _collection = None
 _lock = threading.Lock()
+
+
+def _space_of(collection) -> str | None:
+    """Koleksiyonun vektör uzayı (hnsw.configuration veya metadata'dan)."""
+    try:
+        cfg = collection.configuration or {}
+        space = ((cfg.get("hnsw") or {}).get("space")) or None
+        if space:
+            return str(space).lower()
+    except Exception:
+        pass
+    return str((collection.metadata or {}).get("hnsw:space", "")).lower() or None
 
 
 def _col():
@@ -29,26 +44,42 @@ def _col():
                     "documents",
                     metadata={"hnsw:space": "cosine"},
                 )
+                # ÖNEMLİ: `get_or_create` mevcut koleksiyona metadata'yı UYGULAMAZ; eski
+                # bir kurulumda uzay 'l2' kalmış olabilir. L2'de `1 − distance` anlamsız/
+                # negatif skor üretir ve kosinüs eşiği asla geçilemez → kosinüse çevir.
+                space = _space_of(_collection)
+                if space != "cosine":
+                    LOG.warning(
+                        "Chroma koleksiyon uzayı '%s' (cosine değil) → cosine'e çevriliyor; "
+                        "belgelerin yeniden embed edilmesi gerekir.",
+                        space or "bilinmiyor",
+                    )
+                    _recreate_collection_locked()
     return _collection
 
 
-def _reset_collection_sync():
-    """MANUEL/OPSİYONEL reset: embed modeli kalıcı olarak değiştiğinde bilinçli çağrılır.
-
-    Otomatik hiçbir yolda çağrılmaz — dimension uyuşmazlığı açıklayıcı hata verir (bkz.
-    `_ensure_dim`). Tüm workspace'lerin indeksini siler; yeniden indeksleme gerekir.
-    """
+def _recreate_collection_locked() -> None:
+    """Koleksiyonu cosine metadata'sıyla yeniden yaratır (kilit ZATEN tutuluyorken)."""
     global _client, _collection
+    if _client is not None:
+        try:
+            _client.delete_collection("documents")
+        except Exception:
+            pass
+        _collection = _client.get_or_create_collection(
+            "documents",
+            metadata={"hnsw:space": "cosine"},
+        )
+
+
+def _reset_collection_sync():
+    """MANUEL/OPSİYONEL reset: koleksiyonu cosine ile sıfırdan yaratır (kilidi alır).
+
+    Otomatik tek çağrı yeri uzay uyuşmazlığıdır (`_col`); dim uyuşmazlığı koleksiyonu
+    ASLA silmez (`_ensure_dim`). Tüm workspace'lerin indeksini siler; yeniden indeksleme gerekir.
+    """
     with _lock:
-        if _client is not None:
-            try:
-                _client.delete_collection("documents")
-            except Exception:
-                pass
-            _collection = _client.get_or_create_collection(
-                "documents",
-                metadata={"hnsw:space": "cosine"},
-            )
+        _recreate_collection_locked()
 
 
 def _ensure_dim(collection, dim: int, model: str) -> None:

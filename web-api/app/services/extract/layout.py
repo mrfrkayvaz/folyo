@@ -1,5 +1,6 @@
 """Blok sıralama (sütun/satır bölme) ve Segment üretimi."""
 
+import re
 from collections import Counter
 
 from ...core.enums import ContentType
@@ -74,20 +75,93 @@ def body_font_size(items: list[dict]) -> float:
     return min(s for s, c in counts.items() if c == best)
 
 
+def _clean_heading(text: str) -> str:
+    """Başlık/gezinme ön ekini temizler: ok/glif gürültüsü, kontrol karakterleri, tekrar boşluk."""
+    cleaned = re.sub(r"[➨➔→\u0000-\u001f]", " ", text)
+    return " ".join(cleaned.split())
+
+
+def _same_heading(a: str, b: str) -> bool:
+    return a.strip().lower() == b.strip().lower()
+
+
+# Liste/madde öğesi başlangıç işaretleri: ok/glif öğeleri, madde işaretleri, çizgiler, numaralar.
+# Boş satırın başladığı bu öğeler bir başlık değil, listenin DEVAMI olan içerik satırlarıdır;
+# başlık algılamasından dışlanmaları gerekir (yoksa her madde ayrı breadcrumb/chunk olur).
+_LIST_MARK_RE = re.compile(
+    r"^\s*(?:(?:[➨➔→•·∙◦○●◉■▪‣➢])|(?:[-–—]\s)|(?:\*\s)|(?:\+\s)"
+    r"|(?:\d{1,3}[.)]\s*)|(?:\(\d{1,3}\)\s*))"
+)
+
+
+def _is_list_item(text: str) -> bool:
+    """Satır bir liste/madde öğesiyle mi başlıyor? (➨ • - 1. vb.)"""
+    return bool(_LIST_MARK_RE.match(text))
+
+
 def emit_segments(ordered: list[dict], page_number: int, body_size: float) -> list[Segment]:
-    """Sıralı item listesini başlık/breadcrumb etiketiyle Segment'lere dönüştürür."""
+    """Sıralı item listesini başlık/breadcrumb etiketiyle Segment'lere dönüştürür.
+
+    Metin item'ları **satır satır** işlenir: blok içinde başlık benzeri bir satır
+    (font kuralı VEYA kısa iki-nokta ile biten satır) breadcrumb'ı günceller ve orada
+    konu sınırı çizilir — böylece farklı başlıkların metni aynı chunk'a karışmaz
+    (embed kalitesi ve dense sıralama için kritik).
+    """
     fallback_ctx = " ".join(it["text"] for it in ordered if it["kind"] == "text")[:PAGE_CONTEXT_CHARS]
     headings: list[tuple[str, float]] = []
     last_heading_size = 0.0
+    threshold = max(body_size * HEADING_SIZE_RATIO, body_size + 1.0)
 
     def ctx() -> str:
         if headings:
             return " | ".join(h[0] for h in headings)
         return fallback_ctx
 
+    def crumbs() -> list[str]:
+        return [h[0] for h in headings]
+
+    def push_heading(text: str, size: float) -> None:
+        nonlocal last_heading_size
+        clean = _clean_heading(text)
+        if not clean:
+            return
+        prev = headings[-1][0] if headings else ""
+        if headings and size >= last_heading_size * 0.85:
+            headings[-1] = (clean, size)  # aynı büyüklük ailesi → konumu güncelle
+        elif not _same_heading(clean, prev):
+            headings.append((clean, size))
+            if len(headings) > HEADING_STACK:
+                headings.pop(0)
+        elif headings:
+            headings[-1] = (prev, size)  # ardışık tekrar → yığma
+        last_heading_size = size
+
+    def is_heading_line(text: str, size: float, bold: bool) -> str | None:
+        """Başlık satırıysa breadcrumb'a girecek temiz metni döndürür, değilse None.
+
+        Kurallar: font kuralı; iki-nokta ile biten kısa satır (`Epirojenez:`);
+        ya da caption kalıbı `Başlık: gövde…` (kısa ön ek + satır başı büyük harf).
+        """
+        clean = _clean_heading(text)
+        if not clean or len(clean) > HEADING_MAX_CHARS:
+            return None
+        # Madde/liste öğeleri başlık DEĞİLDİR: aynı tema altında tek chunk'ta birleşmeli.
+        # (Kaynak belgelerde liste öğeleri gövdeden büyük/kalın olabiliyor — font kuralı
+        #  bunları başlık sanıp her maddeyi ayrı konuya/chunk'a ayırıyor.)
+        if _is_list_item(text):
+            return None
+        if size >= threshold or (bold and size > body_size):
+            return clean
+        if len(clean) <= 70 and clean.endswith(":"):
+            return clean
+        m = re.match(r"^([^:]{3,60}):\s", text)
+        if m and text[0].isupper() and len(clean) <= 240:
+            return _clean_heading(m.group(1)) + ":"
+        return None
+
     segments: list[Segment] = []
-    for order, it in enumerate(ordered):
-        crumbs = [h[0] for h in headings]
+    order = 0
+    for it in ordered:
         if it["kind"] != "text":
             text = it["text"]
             if it["kind"] == "table":
@@ -102,36 +176,47 @@ def emit_segments(ordered: list[dict], page_number: int, body_size: float) -> li
                     bbox=[it["bbox"]],
                     order=order,
                     page_context=ctx(),
-                    breadcrumbs=crumbs,
+                    breadcrumbs=crumbs(),
                     image_path=it.get("image_path", ""),
                     image_kind=it.get("image_kind", ""),
                 )
             )
+            order += 1
             continue
 
-        text, size, bold = it["text"], it["size"], it["bold"]
-        threshold = max(body_size * HEADING_SIZE_RATIO, body_size + 1.0)
-        if (size >= threshold or (bold and size > body_size)) and len(text) <= HEADING_MAX_CHARS:
-            clean = text.replace("\n", " ")
-            if headings and size >= last_heading_size * 0.85:
-                headings[-1] = (clean, size)
-            else:
-                headings.append((clean, size))
-                if len(headings) > HEADING_STACK:
-                    headings.pop(0)
-            last_heading_size = size
+        lines = it.get("lines") or [{"text": it["text"], "size": it["size"], "bold": it["bold"]}]
+        buf: list[str] = []
 
-        segments.append(
-            Segment(
-                content_type=ContentType.text.value,
-                text=text,
-                page_number=page_number,
-                bbox=[it["bbox"]],
-                order=order,
-                page_context=ctx(),
-                breadcrumbs=crumbs,
+        def flush_buf():
+            nonlocal order
+            text = "\n".join(buf).strip()
+            buf.clear()
+            if not text:
+                return
+            segments.append(
+                Segment(
+                    content_type=ContentType.text.value,
+                    text=text,
+                    page_number=page_number,
+                    bbox=[it["bbox"]],
+                    order=order,
+                    page_context=ctx(),
+                    breadcrumbs=crumbs(),
+                )
             )
-        )
+            order += 1
+
+        for ln in lines:
+            t = (ln.get("text") or "").strip()
+            if not t:
+                continue
+            line_size = float(ln.get("size") or 0.0)
+            heading = is_heading_line(t, line_size, bool(ln.get("bold")))
+            if heading:
+                flush_buf()
+                push_heading(heading, line_size)
+            buf.append(t)
+        flush_buf()
     return segments
 
 

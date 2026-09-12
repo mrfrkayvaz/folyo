@@ -326,3 +326,50 @@ Doğrulama: compose config ✓; worker "3 functions" ile ayağa kalktı; uçtan 
 - **`chroma_store.upsert_chunks`** (yeni): `add` yerine **`upsert`** — aynı id üzerine tekrar yazılabilir (ARQ retry_jobs ile mükemmel uyum: yarıda kalan iş yeniden çalıştırıldığında çakışma yok); vektörler numpy olarak geçilir (`tolist()` kopyası yok). Eski `_add_sync`/`add` kaldırıldı.
 - **`jobs/embed`**: `embed_texts+add` yerine `embed_batches(on_batch=write_batch)` — her 64'lük batch biter bitmez Chroma'ya yazılır; uyarı eşiği `embed_memory_warning_chunks=2000` (aşınca LOG.warning); dim ilk batch'ten alınır; `bm25_index.invalidate` tüm yazım sonunda bir kez.
 - Canlı: tek PDF → worker `embed_document` 1.98s ok → `embedded` (upsert yolu) → silme ✓. Not: worker kod değişikliklerinde `docker compose restart web-worker` gerekir (arq reload'u yok).
+
+### 15.09.2026 (DENSE KÖK NEDEN: Chroma uzayı L2 idi + temizlik)
+
+**Belirti:** Dense kosinüs hep düşük/negatif, eşik asla geçmiyor.
+**Kök neden:** Chroma koleksiyonu **`hnsw.space='l2'`** ile yaratılmış (eski kurulum); `get_or_create_collection` mevcut koleksiyona cosine metadata'sını uygulamıyor. `parse_query_row` skoru `1 − distance` hesapladığından L2² için negatif çöp üretiyordu (kanıt: dist=1.3282=L2², gerçek cos=+0.3359). Dense kanal fiilen ölüydü.
+**Düzeltmeler:**
+- `chroma_store._col()` uzay bekçisi: `l2` ise koleksiyonu **cosine ile yeniden yaratır** (uyarı loglar); deadlock'suz `_recreate_collection_locked`.
+- **Embed ↔ gösterim ayrımı:** `Chunk.embed_text` (breadcrumb ön eki YOK) → Chroma `documents`/BM25 bu metni kullanır; LLM bağlamı `[Bölüm: …]`'ı `breadcrumbs` metadata'sından yeniden kurar (görsel/içerik kaybı yok).
+- **Temizlik:** `normalize_text` → satır-sonu tireleme birleştirme + ok/glif (`➨➔→`) temizliği; `emit_segments` başlık temizliği + ardışık tekrar dedupe.
+- Koleksiyon yeniden embed edildi (10 belge): `space=cosine`, 160 chunk; skorlar **+0.31…+0.34** (gerçek kosinüs).
+- `guard_dense_min` **0.38 → 0.30** (ölçülen gerçekçi bant; InspectModal eşiği API'den okur).
+**Kalan (P1):** chunk konu sınırı — epirojenez cümlesi hâlâ "Aşındırma Platoları" chunk'ının kuyruğunda (başlık tespiti kaçırıyor) → heading tabanlı bölme iyileştirmesi.
+
+### 15.09.2026 (P1: başlık tabanlı konu sınırı)
+
+**Belirti:** epirojenez cümlesi "Aşındırma Platoları" chunk'ının kuyruğunda kalıyordu (chunk konuları karışıyordu).
+
+**Düzeltme (`extract/blocks.py` + `layout.py`):**
+- `blocks._text_item` artık metin item'ına **satır bilgisi** taşır (`lines: [{text,size,bold}]`).
+- `emit_segments` metin item'larını **satır satır** işler; orta-blok başlık benzeri satır breadcrumb'ı güncelleyip **konu sınırı çizer**: font kuralı VEYA `Epirojenez:` (iki-nokta bitişli) VEYA caption kalıbı `Başlık: gövde…` (kısa ön ek + satır başı büyük harf). Aynı boyutlu yeni başlık kardeş bölüm sayılır (yığmaz, değiştirir).
+- Sonuç: her konu kendi segmentine/`page_context`'ine → chunk ayrımı konu bazlı.
+
+**Doğrulama:** birim (orta-blok başlık → iki segment, ctx güncellenir) ✓; yalnızca ölçüm workspace'i (37eee3fd) yeniden embed edildi:
+
+| | Önce | Sonra |
+|---|---|---|
+| epirojenez chunk rank | 2/18 | **1/19** |
+| soru↔chunk kosinüs | 0.3227 | **+0.3871** |
+| dense eşiği (0.30) | geçmezdi | **geçiyor** |
+
+Arka plan notu: bu oturumda dense iyileştirme zinciri bütünleşti — (1) Chroma uzayı L2→cosine düzeltmesi, (2) embed↔gösterim ayrımı (`embed_text`), (3) sembol/tire/başlık temizliği, (4) başlık-tabanlı konu sınırı, (5) eşik kalibrasyonu 0.30.
+
+### 15.09.2026 (P1: liste/madde öğeleri ayrı chunk'a bölünüyordu)
+
+**Belirti:** "Depremin Az Olduğu Alanlar:" başlığından sonraki 4 madde (ve `➨` öğeli diğer listeler) her satır ayrı chunk + ayrı `section_title` olarak düşüyordu (canlı: folyo-gorsel-test.pdf sayfa 2, eski chunk #13-17). Satır aralarındaki yalnız `➨` satırları da ayrı boş chunk'lar üretiyordu.
+
+**Kök neden:** Sayfa 2'de gövde 9px, liste öğeleri 12px (kaynak düzeninde liste stili gövdeden büyük). `threshold = max(body×1.15, body+1) = 10.35` olduğundan **font kuralı her 12px'lik madde satırını başlık sanıyordu** → `push_heading` aynı boyut ailesinde breadcrumb'ı sürekli değiştiriyor → her satır farklı `page_context` → `chunk_segments` birleştiremiyor → satır satır chunk.
+
+**Düzeltme (`extract/layout.py`):**
+- `_is_list_item(text)`: satır başı işaretçilerini tanır — ok/glif öğeleri (`➨➔→`), madde işaretleri (`•·∙◦○●◉■▪‣➢`), çizgiler (`- – —` + boşluk), `*`/`+`, numaralar (`1.`, `1)`, `(1)`).
+- `is_heading_line` başında list kontrolü: madde öğesi **asla başlık değildir** → tek tema altında tek chunk'ta birleşir; yalnız `➨` satırları da (temiz hali boş) başlık olmaz.
+- Roman rakamlı bölüm başlıkları (`I. ARNAVUTKALDIRIMI…`) etkilenmez (sadece `\d`), `Epirojenez:` iki-nokta kuralı ve caption kuralı korunur.
+
+**Doğrulama (folyo-gorsel-test.pdf):**
+- Önce: sayfa 2 madde listeleri satır satır chunk (13-18 arası 6 ayrı chunk).
+- Sonra: "Depremin Az Olduğu Alanlar:" + 5 madde → **tek chunk**; "Türkiye'deki Fay Hatları:" + KAF/DAF/BAF → tek chunk; yalnız `➨` segmentleri kayboldu (73→61 segment).
+- Regresyon: kuzey_ruzgari-v2 80 segment/11 chunk değişmedi; sentetik alt-yazı senaryosu 6→2 chunk; diğer PDF'ler hatasız.

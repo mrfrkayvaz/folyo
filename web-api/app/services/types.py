@@ -27,3 +27,6 @@ class Chunk:
     breadcrumbs: list[str] = field(default_factory=list)
     image_path: str = ""
     image_kind: str = ""
+    # Embed/gösterim ayrımı: `embed_text` breadcrumb ön eki İÇERMEZ (gürültüsüz vektör);
+    # `text` gösterim/LLM bağlamı için ön ekli halini korur.
+    embed_text: str = ""

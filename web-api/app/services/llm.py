@@ -24,10 +24,8 @@ def _message(obj: dict) -> str:
 
 
 def _context_label(c: dict) -> str:
-    """Bağlam bloğu künyesi: belge, sayfa, parça + tip (görsele öz: `görsel: belge_id/dosya_adı`)."""
+    """Bağlam bloğu künyesi: belge, sayfa, parça (görsele öz: `görsel: belge_id/dosya_adı`)."""
     parts = [c["name"], f"sayfa {c.get('page_number', 1)}", f"parça {c['chunk_index'] + 1}"]
-    if c.get("content_type"):
-        parts.append(f"tip: {c['content_type']}")
     if c.get("content_type") == "image" and c.get("image_path"):
         parts.append(f"görsel: {c.get('doc_id', '?')}/{c['image_path']}")
     return "[" + ", ".join(parts) + "]"
@@ -36,17 +34,21 @@ def _context_label(c: dict) -> str:
 def _user_content(context: str, question: str, context_blocks: list[dict]) -> str:
     """Kullanıcı mesajı: bağlam + bu soruda kullanılabilir görseller + soru."""
     content = f"BAĞLAM (yüklenen belgelerden alıntılar):\n\n{context}"
-    avail = [
+    # Aynı görsel birden çok parçada yer alabilir; listede bir kez görünsün.
+    avail = list(dict.fromkeys(
         f"[Görsel: {c.get('doc_id', '?')}/{c['image_path']}]"
         for c in context_blocks
         if c.get("content_type") == "image" and c.get("image_path")
-    ]
+    ))
     if avail:
         content += (
             "\n\nKULLANILABİLİR GÖRSELLER: "
             + ", ".join(avail)
             + "\nCevabında bu görsellerden birinin içeriğini kullandıysan, yer tutucuyu görselin "
-            + "olması gereken noktaya satır içi yerleştir (listeden birebir kopyala, değiştirme)."
+            + "en alakalı olduğu tek noktaya satır içi yerleştir (listeden birebir kopyala, "
+            + "değiştirme). Bir görseli yalnızca BİR kez göster: aynı görselden gelen bilgiler "
+            + "birden fazlaysa dahi tek yer tutucu koy, tekrarlama ve cevabın altında ayrıca "
+            + "belirtme."
         )
     return f"{content}\n\nKullanıcı sorusu: {question}"
 
@@ -55,10 +57,21 @@ async def stream_deltas(context_blocks: list[dict], question: str, on_delta):
     settings = get_settings()
     api_key, base = _auth(settings)
 
-    context = "\n\n".join(
-        f"{_context_label(c)}\n{c['text']}"
-        for c in context_blocks
-    )
+    def _context_block(c: dict) -> str:
+        """Künye + (gerekirse) `[Bölüm: …]` ön cümlesi + metin.
+
+        Chroma metinleri artık breadcrumb ön eki içermiyor (gürültüsüz embed); bölüm
+        bilgisinin LLM bağlamına düşmemesi için metadata breadcrumbs'ından yeniden kurulur.
+        """
+        label = _context_label(c)
+        text = c["text"]
+        if not text.lstrip().startswith("[Bölüm:"):
+            crumbs = c.get("breadcrumbs") or []
+            if crumbs:
+                text = f"[Bölüm: {' > '.join(crumbs)}]\n{text}"
+        return f"{label}\n{text}"
+
+    context = "\n\n".join(_context_block(c) for c in context_blocks)
     payload = {
         "model": settings.llm_model,
         "messages": [

@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     retrieve_bm25_k: int = 8
     rrf_k: int = 60
     context_chunks: int = 5
-    guard_dense_min: float = 0.38
+    # Koleksiyon cosine uzayında; ölçülen ilgili-chunk kosinüs dağılımı (BGE-M3, TR kısa sorgu)
+    # ~0.30-0.55 bandında. 0.38 çoğu doğru eşleşmeyi eliyordu → 0.30'a kalibre edildi.
+    guard_dense_min: float = 0.30
     guard_bm25_min: float = 1.0
     # BM25 tokenizer (Türkçe): Unicode kelime + hafif kök (prefix) eşleşmesi.
     bm25_stem_min: int = 4   # sorgu token'inin kök uzunluğu (çevirmeli ↔ çevirmelisiniz)

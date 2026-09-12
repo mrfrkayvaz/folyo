@@ -1,9 +1,14 @@
+import re
 from .extract import extract_segments
 from .types import Chunk, Segment
 
 
 def normalize_text(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
+    # Satır sonu tirelemesiyle bölünmüş sözcükleri birleştir (PDF artefaktı: "olu-\nşan").
+    text = re.sub(r"(\w)-\s*\n\s*(\w)", r"\1\2", text)
+    # Ok/glif gürültüsünü (süsleme karakterleri) boşlukla değiştir.
+    text = re.sub(r"[➨➔→]", " ", text)
     text = "\n".join(" ".join(line.split()) for line in text.split("\n"))
     text = text.replace("\n \n", "\n\n")
     return text.strip()
@@ -130,6 +135,9 @@ def chunk_segments(
             chunks.append(
                 Chunk(
                     text=_with_breadcrumb(piece, head.breadcrumbs),
+                    # Embed metni breadcrumb ön eki olmadan (gürültüsüz vektör; ön ek
+                    # gösterim/LLM için `text`'te ve `breadcrumbs` metadata'sında kalır).
+                    embed_text=piece,
                     content_type=ctype,
                     page_number=head.page_number,
                     page_context=head.page_context,
