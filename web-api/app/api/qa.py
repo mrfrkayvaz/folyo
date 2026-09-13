@@ -4,11 +4,11 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from ..core.constants import ERROR_QA_GENERIC_FAILURE
+from shared.core.constants import ERROR_QA_GENERIC_FAILURE
 from ..core.database import get_factory
-from ..core.enums import ChatRole
-from ..core.logging import get_logger
-from ..models import ChatMessage, Workspace
+from shared.core.enums import ChatRole
+from shared.core.logging import get_logger
+from shared.models import ChatMessage, Workspace
 from ..schemas.chat import QaBody
 from ..services.rag import qa_events
 

@@ -1,0 +1,14 @@
+# Root-context build'ler (worker) için — worker yalnızca worker/ klasörünü kullanır;
+# repo büyüklüğü/ağ gizliliği için dışlama. (Web-api/panel-api kendi .dockerignore'unu kullanır.)
+.git
+**/node_modules
+**/.venv
+dist/
+storage/
+chroma_data/
+.env
+**/__pycache__
+*.pyc
+*.log
+.pytest_cache
+.DS_Store

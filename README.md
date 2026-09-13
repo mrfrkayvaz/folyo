@@ -77,4 +77,4 @@ cp web-api/.env.example web-api/.env   # sonra .env'yi düzenle
 - `POST /api/workspaces/{id}/qa` — soru sor; SSE: `meta{sources} → delta* → done` (mesajlar kaydedilir)
 - `GET /api/health`
 
-Saklama: **Postgres** (`db` servisi → workspaces/documents/chat_messages/embeddings) + **ChromaDB** (`web-api/chroma_data/`) + orijinal dosyalar (`web-api/storage/<doc_id>/`). Görsel/OCR desteği arch.md §3.3 kararı bekliyor — şimdilik PDF (metin katmanı), TXT, MD yükleyebilirsin.
+Saklama: **Postgres** (`db` servisi → workspaces/documents/chat_messages/embeddings) + **ChromaDB** (`chroma_data/`) + orijinal dosyalar (`storage/<doc_id>/`). Görsel/OCR desteği arch.md §3.3 kararı bekliyor — şimdilik PDF (metin katmanı), TXT, MD yükleyebilirsin.

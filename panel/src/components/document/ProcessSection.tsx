@@ -1,6 +1,7 @@
-import { DOC_STATUS_LABELS } from "../../constants/labels"
-import { formatTs } from "../../utils/formatters"
-import type { JobInfo, PanelDocument } from "../../types/models"
+import { DOC_STATUS_LABELS } from "@/constants/labels"
+import { SummaryStatus } from "@/constants/enums"
+import { formatTs } from "@/utils/formatters"
+import type { JobInfo, PanelDocument } from "@/types/models"
 
 interface ProcessSectionProps {
   d: PanelDocument
@@ -29,7 +30,7 @@ export default function ProcessSection({ d, job }: ProcessSectionProps) {
         </div>
         {d.error && <p className="mt-2 text-xs text-error">hata: {d.error}</p>}
         {job?.error && <p className="mt-1 text-xs text-error">job hatası: {job.error}</p>}
-        {d.summary_status === "failed" && d.summary_error && (
+        {d.summary_status === SummaryStatus.Failed && d.summary_error && (
           <p className="mt-1 text-xs text-error">özet hatası: {d.summary_error}</p>
         )}
         <p className="mt-2 text-xs text-base-content/45">

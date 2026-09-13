@@ -1,22 +1,16 @@
-# --- uv tabanlı FastAPI image (production / Coolify) ---
-# Aynı imaj, web-worker (ARQ) için de kullanılabilir:
-#   komut override → "uv run --no-sync arq app.worker_settings.settings"
+# --- uv tabanlı FastAPI image (production / Coolify) — KÖK build context ---
+# (shared/ paketini de imaja alır; dockerfile: web-api/Dockerfile, context: repo kökü)
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
-# OCR sistem bağımlılıkları (Tesseract + Türkçe/İngilizce dil verisi)
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        tesseract-ocr tesseract-ocr-tur tesseract-ocr-eng \
-    && rm -rf /var/lib/apt/lists/*
-
-# Bağımlılıkları lockfile'dan kur (kaynak kopyalamadan önce — katman önbelleği için)
-COPY pyproject.toml uv.lock ./
+# Bağımlılıkları lockfile'dan kur (katman önbelleği için önce kopyala)
+COPY web-api/pyproject.toml web-api/uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Uygulama kodunu kopyala
-COPY . .
+# Uygulama + ortak (shared) kodu
+COPY web-api/app ./app
+COPY shared ./shared
 
 ENV PYTHONUNBUFFERED=1
 

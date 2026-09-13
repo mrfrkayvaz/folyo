@@ -5,12 +5,12 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import and_, func, or_, select as sa_select
 from sqlmodel import select as sm_select
 
-from ..core import fs as core_fs
-from ..core.constants import DEFAULT_WORKSPACE_NAME
+from shared.core import fs as core_fs
+from shared.core.constants import DEFAULT_WORKSPACE_NAME
 from ..core.database import get_factory
-from ..models import ChatMessage, Document, DocumentQuestion, Workspace
+from shared.models import ChatMessage, Document, DocumentQuestion, Workspace
 from ..schemas.workspace import WorkspaceCreate
-from ..services import chroma_store
+from shared.services import chroma_store
 from ..services.jobs import storage_dir
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])

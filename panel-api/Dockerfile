@@ -1,18 +1,19 @@
-# uv tabanlı FastAPI imajı — panel-api (production / Coolify)
+# uv tabanlı FastAPI imajı — panel-api (production / Coolify) — KÖK build context
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
+COPY panel-api/pyproject.toml panel-api/uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY . .
+COPY panel-api/app ./app
+COPY shared ./shared
 
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-# Chroma verisini okuma amaçlı salt-okunur erişim (Coolify'da volume bağla)
+# Chroma verisini okuma amaçlı erişim (Coolify'da volume bağla)
 VOLUME /app/chroma_data
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \

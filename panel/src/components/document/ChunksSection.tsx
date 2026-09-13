@@ -1,5 +1,5 @@
-import { CONTENT_TYPE_LABELS, IMAGE_KIND_LABELS } from "../../constants/labels"
-import type { ChunkItem } from "../../types/models"
+import { contentTypeLabel, imageKindLabel } from "@/constants/labels"
+import type { ChunkItem } from "@/types/models"
 
 interface ChunksSectionProps {
   chunks: ChunkItem[]
@@ -17,10 +17,10 @@ export default function ChunksSection({ chunks }: ChunksSectionProps) {
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               <span className="font-mono text-base-content/60">#{c.chunk_index}</span>
               <span className="badge badge-warning badge-soft badge-xs">
-                {CONTENT_TYPE_LABELS[c.content_type] ?? c.content_type}
+                {contentTypeLabel(c.content_type)}
               </span>
               {c.image_kind && (
-                <span className="text-base-content/45">{IMAGE_KIND_LABELS[c.image_kind] ?? c.image_kind}</span>
+                <span className="text-base-content/45">{imageKindLabel(c.image_kind)}</span>
               )}
               <span className="text-base-content/45">sayfa {c.page_number}</span>
               {c.image_path && <span className="badge badge-info badge-soft badge-xs">{c.image_path}</span>}

@@ -8,6 +8,13 @@ class Settings(BaseSettings):
 
     database_url: str = ""
     chroma_dir: str = "chroma_data"
+    # Panel API taşıyıcı (bearer) token imzası — HMAC anahtarı.
+    # Prod'da (Coolify) AUTH_SECRET set edilmeli; boşsa dev fallback'i kullanılır.
+    auth_secret: str = ""
+    auth_token_ttl_hours: int = 24
+    # Admin seed: `python -m app.seed_admin` bu hesabı users tablosuna idempotent ekler.
+    admin_username: str = ""
+    admin_password: str = ""
     # Dev CORS: virgülle ayrılmış origin listesi (boşsa CORS middleware eklenmez).
     # Prod'da frontend aynı-origin /api kullandığından genelde gerekmez.
     cors_origins: str = (

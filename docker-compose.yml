@@ -46,10 +46,14 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Embed worker: ARQ tüketicisi — web-api'nin ürettiği embed/enrich işlerini işler.
-  # Aynı web-api imajı + ayrı süreç (arbe suarı event loop'tan bağımsız).
+  # Embed worker: bağımsız ARQ servisi — web-api'nin ürettiği embed/enrich işlerini işler.
+  # Kod: worker/worker_app (settings/runners + jobs + ingest/extract/ocr/vision/summary);
+  # ortak katmanı (modeller, core, chroma_store, embeddings...) web-api paketinden (`app.*`)
+  # import eder — kopya yok, tek kaynak.
   web-worker:
-    build: ./web-api
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
     container_name: folyo-worker
     depends_on:
       db:
@@ -57,21 +61,24 @@ services:
       redis:
         condition: service_healthy
     env_file:
-      - path: ./web-api/.env
+      - path: ./worker/.env
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://folyo:folyo@db:5432/folyo
       REDIS_URL: redis://redis:6379/0
     volumes:
-      - ./web-api/app:/app/app
-      - ./web-api/chroma_data:/app/chroma_data
-      - ./web-api/storage:/app/storage
-    command: ["uv", "run", "--no-sync", "arq", "app.worker_settings.settings"]
+      - ./worker/worker_app:/app/worker_app  # worker kodu (canlı)
+      - ./shared:/app/shared           # ortak katman
+      - ./chroma_data:/app/chroma_data
+      - ./storage:/app/storage
+    command: ["uv", "run", "--no-sync", "arq", "worker_app.worker_settings.settings"]
     restart: unless-stopped
 
   # Backend: kaynak bind-mount + uvicorn --reload → .py kaydet, anında restart
   web-api:
-    build: ./web-api
+    build:
+      context: .
+      dockerfile: web-api/Dockerfile
     container_name: folyo-api
     ports:
       - "8000:8000"          # doğrudan erişim (debug için)
@@ -89,8 +96,9 @@ services:
       REDIS_URL: redis://redis:6379/0
     volumes:
       - ./web-api/app:/app/app        # canlı kod
-      - ./web-api/chroma_data:/app/chroma_data  # vektör verisi host'ta kalsın
-      - ./web-api/storage:/app/storage          # yüklenen belgeler host'ta kalsın
+      - ./shared:/app/shared           # ortak katman
+      - ./chroma_data:/app/chroma_data  # vektör verisi host'ta kalsın
+      - ./storage:/app/storage          # yüklenen belgeler host'ta kalsın
     command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     restart: unless-stopped
 
@@ -115,7 +123,9 @@ services:
 
   # ── Panel (yönetim görünümü) — aynı DB + Chroma'yı okur; şemayı web-api yönetir ──
   panel-api:
-    build: ./panel-api
+    build:
+      context: .
+      dockerfile: panel-api/Dockerfile
     container_name: folyo-panel-api
     ports:
       - "8001:8000"
@@ -130,7 +140,8 @@ services:
       CHROMA_DIR: /app/chroma_data
     volumes:
       - ./panel-api/app:/app/app
-      - ./web-api/chroma_data:/app/chroma_data
+      - ./shared:/app/shared           # ortak katman
+      - ./chroma_data:/app/chroma_data
     command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     restart: unless-stopped
 
@@ -162,6 +173,18 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - web
+    restart: unless-stopped
+
+  # ── Storage: yüklenen belgeler + kırpımlar (web-api ile AYNI host dizini) ──
+  # Statik dosyaları HTTP üzerinden serve eder; web-api yazmaya, bu servis
+  # okumaya devam eder. Prod'da Caddy/domain arkasında; host port dev içindir.
+  storage:
+    image: nginx:alpine
+    container_name: folyo-storage
+    ports:
+      - "9002:80"
+    volumes:
+      - ./storage:/usr/share/nginx/html:ro
     restart: unless-stopped
 
 volumes:

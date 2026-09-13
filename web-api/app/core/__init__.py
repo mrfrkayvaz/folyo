@@ -1,8 +1,8 @@
 from .config import Settings, get_settings
-from .constants import DEFAULT_WORKSPACE_NAME, MAX_UPLOAD_SIZE
-from .database import get_engine, get_factory, get_session, init_db
-from .enums import ChatRole, DocumentStatus, EmbeddingStatus
-from .prompts import SYSTEM_PROMPT
+from .database import get_engine, get_factory, get_session, reset_interrupted_jobs
+from shared.core.constants import DEFAULT_WORKSPACE_NAME, MAX_UPLOAD_SIZE
+from shared.core.enums import ChatRole, DocumentStatus, EmbeddingStatus
+from shared.core.prompts import SYSTEM_PROMPT
 
 __all__ = [
     "Settings",
@@ -13,7 +13,7 @@ __all__ = [
     "get_engine",
     "get_factory",
     "get_session",
-    "init_db",
+    "reset_interrupted_jobs",
     "ChatRole",
     "DocumentStatus",
     "EmbeddingStatus",

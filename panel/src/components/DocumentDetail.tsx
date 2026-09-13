@@ -1,9 +1,9 @@
-import ChunksSection from "./document/ChunksSection"
-import DocumentHeader from "./document/DocumentHeader"
-import ProcessSection from "./document/ProcessSection"
-import QuestionsSection from "./document/QuestionsSection"
-import SummarySection from "./document/SummarySection"
-import type { DocumentDetailResponse } from "../types/models"
+import ChunksSection from "@/components/document/ChunksSection"
+import DocumentHeader from "@/components/document/DocumentHeader"
+import ProcessSection from "@/components/document/ProcessSection"
+import QuestionsSection from "@/components/document/QuestionsSection"
+import SummarySection from "@/components/document/SummarySection"
+import type { DocumentDetailResponse } from "@/types/models"
 
 interface DocumentDetailProps {
   data: DocumentDetailResponse | null

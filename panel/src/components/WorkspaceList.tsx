@@ -1,4 +1,4 @@
-import type { PanelWorkspace } from "../types/models"
+import type { PanelWorkspace } from "@/types/models"
 
 interface WorkspaceListProps {
   workspaces: PanelWorkspace[]

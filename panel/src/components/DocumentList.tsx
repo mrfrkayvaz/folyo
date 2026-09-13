@@ -1,5 +1,5 @@
-import { DOC_STATUS_LABELS, SUMMARY_STATUS_LABELS } from "../constants/labels"
-import type { PanelDocument } from "../types/models"
+import { DOC_STATUS_LABELS, SUMMARY_STATUS_LABELS } from "@/constants/labels"
+import type { PanelDocument } from "@/types/models"
 
 interface DocumentListProps {
   docs: PanelDocument[] | null

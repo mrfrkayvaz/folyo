@@ -3,16 +3,24 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import api_router
 from .core.config import get_settings
-from .core.database import init_db
+
+# Ortak (shared) modüller bu servisin Settings nesnesini kullanır — shared importları
+# bind'den SONRA gelmelidir (embeddings modül-importta get_settings() çağırır).
+from shared.core import config as _shared_config
+
+_shared_config.bind(get_settings())
+
+from .api import api_router
+from .core.database import reset_interrupted_jobs
 from .services.jobs.recover import recover_orphaned_jobs
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    await init_db()
-    # Restart/kesintiyle ölmüş embed görevlerini yeniden zamanla (yetim kurtarma).
+    # Şema migrasyonu panel-api yönetir (init_db orada); bu servis yalnızca kuyruk
+    # durumlarını sıfırlar + restart/kesintiyle ölmüş embed görevlerini yeniden zamanlar.
+    await reset_interrupted_jobs()
     await recover_orphaned_jobs()
     yield
 

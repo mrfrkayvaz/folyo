@@ -15,11 +15,20 @@ dist/
 
 # Folyo özel ortam + yerel dizin verileri
 web-api/.env
+panel-api/.env
+worker/.env
 web-api/.ragdata/
-web-api/storage/
-web-api/chroma_data/
+storage/
+chroma_data/
 
 # Frontend ortam dosyaları (yerel backend adresi) — örnekler (.env.example) commit'e girer
 web/.env
 panel/.env
 
+
+# Log + işletim sistemi/editor kalıntıları
+*.log
+.DS_Store
+.idea/
+.vscode/
+.history/

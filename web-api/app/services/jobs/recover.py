@@ -11,11 +11,11 @@ from datetime import datetime, timezone
 from sqlmodel import and_, or_, select
 
 from ...core.database import get_factory
-from ...core.enums import DocumentStatus, EmbeddingStatus
-from ...core.logging import get_logger
-from ...core.taskq import enqueue as taskq_enqueue
-from ...models import Document, EmbeddingJob
-from .. import chroma_store
+from shared.core.enums import DocumentStatus, EmbeddingStatus
+from shared.core.logging import get_logger
+from shared.core.taskq import enqueue as taskq_enqueue
+from shared.models import Document, EmbeddingJob
+from shared.services import chroma_store
 
 LOG = get_logger("jobs.recover")
 

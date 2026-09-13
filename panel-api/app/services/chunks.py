@@ -4,7 +4,7 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from ..core.config import get_settings
-from ..core.constants import COLLECTION_NAME
+from shared.core.constants import COLLECTION_NAME
 
 _client = None
 

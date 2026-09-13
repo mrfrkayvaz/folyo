@@ -1,3 +1,5 @@
+import type { DocumentStatus, EmbeddingStatus, SummaryStatus } from "@/constants/enums"
+
 export interface PanelWorkspace {
   id: string
   name: string
@@ -10,7 +12,7 @@ export interface PanelWorkspace {
 }
 
 export interface JobInfo {
-  status?: string
+  status?: EmbeddingStatus
   dim?: number
   chunks?: number
   progress?: number
@@ -22,11 +24,11 @@ export interface PanelDocument {
   filename: string
   file_type?: string
   size?: number
-  status: string
+  status: DocumentStatus
   chunk_count?: number
   error?: string | null
   summary?: string | null
-  summary_status?: string | null
+  summary_status?: SummaryStatus | null
   summary_error?: string | null
   questions?: string[]
   created_at?: string

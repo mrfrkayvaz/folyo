@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from ..core.database import get_factory
-from ..models import ChatMessage, Document, Workspace
+from shared.models import ChatMessage, Document, Workspace
 
 router = APIRouter(prefix="/api", tags=["health"])
 
