@@ -15,3 +15,5 @@ dependencies = [
     "sqlmodel>=0.0.42",
     "uvicorn[standard]>=0.52.4",
 ]
+[dependency-groups]
+dev = ["pytest>=8.0"]

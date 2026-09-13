@@ -26,7 +26,9 @@ export async function jfetch<T = unknown>(url: string, opts: RequestInit = {}): 
     headers: { ...authHeaders(), ...(opts.headers ?? {}) },
   })
   // Oturum sona erdi: dışında her 401'de temizle (giriş ekranına dön).
-  if (res.status === 401 && !url.startsWith("/auth/login")) {
+  // Not: login yolu tam şekliyle `/api/auth/login` gelir — `startsWith("/auth/login")`
+  // eşleşmezdi; `includes` kullan. (Yanlış şifre → oturum temizlenmez, gerçek hata gösterilir.)
+  if (res.status === 401 && !url.includes("/auth/login")) {
     useAuth.getState().logout()
     throw new Error("Oturum süresi doldu, tekrar giriş yapın.")
   }

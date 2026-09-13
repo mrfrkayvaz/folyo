@@ -16,17 +16,22 @@ import re
 
 _WORD_RE = re.compile(r"[\w]+(?:[-./][\w]+)*")
 
+# Türkçe noktalı/noktasız I ayrımı. `.lower()` yalnız başına `İ`'yi `i + U+0307`
+# (birleşik üst nokta) yapar — bu karakter `\w` değil, kelimeyi ORTADAN böler
+# (doğrulandı: "ÇEVİRMELİYİM" → çevi/rmeli/yi/m). `İ→i`, `I→ı` haritalaması
+# çevirmeden önce uygulanır; gerisi `.lower()`'a kalır.
+_TR_MAP = str.maketrans({"İ": "i", "I": "ı"})
+
 
 def tokenize_text(text: str) -> list[str]:
-    r"""Metni küçük harfe indirip Unicode kelime token'larına böler.
+    r"""Metni Türkçe küçültüp Unicode kelime token'larına böler.
 
-    `text.lower()` Python yerelinden bağımsız Unicode küçültme kullanır
-    (İ → i, I → ı doğru çözülür); `\w` Unicode harfleri (çşğöüı dahil),
-    rakamları ve alt çizgiyi kapsar. Kesme işareti ve noktalama ayraçtır.
+    `İ→i`, `I→ı` ayrımı `.lower()`'dan önce yapılır (birleşik üst nokta
+    üretilmez); çşğöüı diakritikleri korunur. Kesme işareti ve noktalama ayraçtır.
     """
     if not text:
         return []
-    cleaned = text.lower()
+    cleaned = text.translate(_TR_MAP).lower()
     compounds = _WORD_RE.findall(cleaned)
     tokens: list[str] = []
     for token in compounds:
