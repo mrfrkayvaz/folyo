@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from ..core.database import get_factory
 from ..core.security import require_auth
-from shared.models import Document, DocumentQuestion, EmbeddingJob
+from shared.models import Document, DocumentLog, DocumentQuestion, EmbeddingJob
 from ..services.chunks import chunks_for
 
 router = APIRouter(prefix="/api/documents", tags=["documents"], dependencies=[Depends(require_auth)])
@@ -27,8 +27,27 @@ async def get_document(did: uuid.UUID):
                 .order_by(DocumentQuestion.position)
             )
         ).scalars().all()
+        # Loglar: en yeni 200 kayıt, görüntüleme sırası eski→yeni (chronological)
+        log_rows = (
+            await s.execute(
+                select(DocumentLog)
+                .where(DocumentLog.document_id == did)
+                .order_by(DocumentLog.created_at.desc())
+                .limit(200)
+            )
+        ).scalars().all()
 
     chunks = chunks_for(str(did))
+    logs = [
+        {
+            "id": str(l.id),
+            "level": l.level,
+            "scope": l.scope,
+            "message": l.message,
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        }
+        for l in reversed(log_rows)
+    ]
     return {
         "document": {
             "id": str(d.id),
@@ -63,4 +82,5 @@ async def get_document(did: uuid.UUID):
             },
         },
         "chunks": chunks,
+        "logs": logs,
     }

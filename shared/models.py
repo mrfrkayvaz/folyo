@@ -102,7 +102,6 @@ class ChatMessage(SQLModel, table=True):
 
 class User(SQLModel, table=True):
     __tablename__ = "users"
-
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     username: str = Field(default="", index=True, unique=True)
     password_hash: str = Field(default="", sa_column=Column(Text, nullable=False))
@@ -113,6 +112,29 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
+class DocumentLog(SQLModel, table=True):
+    """Doküman bazlı işlem günlüğü — web-api/worker kilit adımlarını kaydeder; panel okur."""
+
+    __tablename__ = "document_logs"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    document_id: uuid.UUID = Field(
+        sa_column=Column(
+            ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+        )
+    )
+    workspace_id: uuid.UUID = Field(
+        sa_column=Column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    )
+    # info | warning | error (panel Loglar sekmesinde rozet rengi buna göre)
+    level: str = Field(default="info", sa_column=Column(Text, nullable=False))
+    scope: str = Field(default="", sa_column=Column(Text, nullable=False))
+    message: str = Field(default="", sa_column=Column(Text, nullable=False))
+    created_at: datetime = Field(
+        default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False, index=True)
+    )
+
+
 __all__ = [
     "Workspace",
     "Document",
@@ -120,4 +142,5 @@ __all__ = [
     "DocumentQuestion",
     "ChatMessage",
     "User",
+    "DocumentLog",
 ]

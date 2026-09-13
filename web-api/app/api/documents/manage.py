@@ -12,6 +12,7 @@ from shared.core.enums import DocumentStatus
 from shared.core.logging import get_logger
 from shared.models import Document, DocumentQuestion, EmbeddingJob
 from shared.services import chroma_store
+from shared.services.doclogs import add_log as add_doc_log
 from ...services import jobs
 from ...services.jobs import storage_dir
 
@@ -96,6 +97,11 @@ async def cancel_document(did: uuid.UUID):
         raise HTTPException(409, f"İptal edilemez (durum: {status}).")
 
     if status == "uploading":
+        await add_doc_log(
+            get_factory, workspace_id=d.workspace_id, document_id=did,
+            level="warning", scope="sistem",
+            message="Yükleme iptal edildi (kullanıcı) — dosya ve kayıt temizlendi",
+        )
         async with get_factory()() as s:
             d = await s.get(Document, did)
             if d:
@@ -107,6 +113,11 @@ async def cancel_document(did: uuid.UUID):
         return {"cancelled": True, "status": "cancelled"}
 
     jobs.request_cancel(str(did))
+    await add_doc_log(
+        get_factory, workspace_id=d.workspace_id, document_id=did,
+        level="warning", scope="sistem",
+        message="İptal istendi — çalışan embed görevi durdurulacak",
+    )
     return {"cancelled": True, "status": "cancelling"}
 
 
@@ -117,6 +128,11 @@ async def delete_document(did: uuid.UUID):
         if not d:
             raise HTTPException(404, "Belge bulunamadı.")
         ws_id = d.workspace_id
+        await add_doc_log(
+            get_factory, workspace_id=ws_id, document_id=did,
+            level="warning", scope="sistem",
+            message="Belge silindi — dosya, vektörler ve log kayıtları temizlendi",
+        )
         await s.delete(d)
         await s.commit()
     jobs.request_cancel(str(did))

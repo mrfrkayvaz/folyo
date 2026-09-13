@@ -46,9 +46,18 @@ export interface ChunkItem {
   text: string
 }
 
+export interface DocumentLogItem {
+  id: string
+  level: "info" | "warning" | "error"
+  scope: string
+  message: string
+  created_at: string | null
+}
+
 export interface DocumentDetailResponse {
   document: PanelDocument
   chunks: ChunkItem[]
+  logs?: DocumentLogItem[]
 }
 
 export interface WorkspaceDetailResponse {

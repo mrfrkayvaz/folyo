@@ -16,6 +16,7 @@ from ...core.database import get_factory
 from shared.core.enums import SummaryStatus
 from shared.core.logging import get_logger
 from shared.services.jobs.schedule import schedule_workspace_summary
+from shared.services.doclogs import add_log as add_doc_log
 from shared.models import Document, DocumentQuestion, Workspace
 from shared.services import chroma_store
 from shared.services.types import Chunk
@@ -64,6 +65,10 @@ async def enrich_document(workspace_id: uuid.UUID, document_id: uuid.UUID) -> No
             return
         chunks = _chunks_from_rows(rows)
         await save_summary_status(document_id, SummaryStatus.pending)
+        await add_doc_log(
+            get_factory, workspace_id=workspace_id, document_id=document_id,
+            scope="özet", message=f"Özet + önerilen sorular üretiliyor ({len(chunks)} chunk)",
+        )
         result = await summary_svc.generate_summary(chunks)
         if not result:
             return
@@ -86,7 +91,16 @@ async def enrich_document(workspace_id: uuid.UUID, document_id: uuid.UUID) -> No
             for i, q in enumerate(result["questions"]):
                 s.add(DocumentQuestion(document_id=document_id, question=q, position=i))
             await s.commit()
+        await add_doc_log(
+            get_factory, workspace_id=workspace_id, document_id=document_id,
+            scope="özet",
+            message=f"Özet hazır ({len(result['questions'])} önerilen soru)",
+        )
     except Exception as exc:
+        await add_doc_log(
+            get_factory, workspace_id=workspace_id, document_id=document_id,
+            level="error", scope="özet", message=f"Özet hatası: {str(exc)[:800]}",
+        )
         await save_summary_status(document_id, SummaryStatus.failed, str(exc)[:800])
     finally:
         await schedule_workspace_summary(workspace_id)

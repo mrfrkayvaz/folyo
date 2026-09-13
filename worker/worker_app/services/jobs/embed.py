@@ -15,6 +15,7 @@ from shared.models import Document, EmbeddingJob
 from shared.services import bm25_index, chroma_codec, chroma_store, embeddings
 from .. import ingest
 from shared.services.jobs.cancel import EmbeddingCancelled, clear as clear_cancel, is_cancelled
+from shared.services.doclogs import add_log as add_doc_log
 from shared.services.paths import storage_dir
 from .stats import compute_stats
 
@@ -45,6 +46,11 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
             s.add(job)
             await s.commit()
 
+        await add_doc_log(
+            get_factory, workspace_id=workspace_id, document_id=document_id,
+            scope="süreç", message="Embed görevi başladı",
+        )
+
         segments = await ingest.extract_segments_for(doc.filename, file_path, storage_dir(document_id) / "crops")
         chunks = ingest.chunk_segments(
             segments,
@@ -54,6 +60,12 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
         )
         if not chunks:
             raise ValueError("Belgeden parçalanabilir metin çıkarılamadı.")
+
+        await add_doc_log(
+            get_factory, workspace_id=workspace_id, document_id=document_id,
+            scope="süreç",
+            message=f"Ayrıştırma tamam: {len(segments)} parça → {len(chunks)} chunk; embedding başlıyor",
+        )
 
         async with sf() as s:
             doc = await s.get(Document, document_id)
@@ -79,6 +91,11 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
                 "[embed] belge %s çok parçalı (%d chunk) — vektörler akışla yazılıyor",
                 document_id,
                 len(chunks),
+            )
+            await add_doc_log(
+                get_factory, workspace_id=workspace_id, document_id=document_id,
+                level="warning", scope="süreç",
+                message=f"{len(chunks)} chunk — vektörler akışla (batch) yazılıyor, RAM koruması",
             )
 
         dim_value: int | None = None
@@ -126,6 +143,12 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
                 s.add(job)
             await s.commit()
 
+        await add_doc_log(
+            get_factory, workspace_id=workspace_id, document_id=document_id,
+            scope="süreç",
+            message=f"Embedding tamamlandı: {len(chunks)} chunk, dim {dim}",
+        )
+
         try:
             await taskq_enqueue("enrich_document", str(workspace_id), str(document_id))
         except Exception as exc:
@@ -134,6 +157,11 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
     except EmbeddingCancelled:
         await chroma_store.delete_document(document_id)
         await core_fs.rmtree_ignore(storage_dir(document_id))
+        await add_doc_log(
+            get_factory, workspace_id=workspace_id, document_id=document_id,
+            level="warning", scope="süreç",
+            message="Embed iptal edildi — dosya ve vektörler temizlendi",
+        )
         async with sf() as s:
             doc = await s.get(Document, document_id)
             if doc:
@@ -150,6 +178,11 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
     except Exception as exc:
         LOG.error("[embed] belge %s embed HATASI: %s", document_id, exc, exc_info=True)
         err_msg = str(exc)
+        await add_doc_log(
+            get_factory, workspace_id=workspace_id, document_id=document_id,
+            level="error", scope="süreç",
+            message=f"Embed hatası: {err_msg}",
+        )
         async with sf() as s:
             doc = await s.get(Document, document_id)
             if doc:

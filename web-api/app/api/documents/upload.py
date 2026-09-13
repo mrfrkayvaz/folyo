@@ -16,6 +16,7 @@ from shared.core.taskq import enqueue as taskq_enqueue
 from shared.models import Document, EmbeddingJob, Workspace
 from ...services import upload
 from shared.services.extract.constants import SUPPORTED_EXTS
+from shared.services.doclogs import add_log as add_doc_log
 from ...services.jobs import storage_dir
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -54,12 +55,28 @@ async def upload_document(wid: uuid.UUID, request: Request):
         await s.commit()
         await s.refresh(doc)
 
+    await add_doc_log(
+        get_factory,
+        workspace_id=wid,
+        document_id=doc.id,
+        scope="yükleme",
+        message=f"Yükleme başladı: {filename} ({size} bayt)",
+    )
+
     ddir = storage_dir(doc.id)
     ddir.mkdir(parents=True, exist_ok=True)
     path = ddir / filename
     result = await upload.stream_to_disk(request, path, size)
 
     if result.aborted or result.incomplete:
+        await add_doc_log(
+            get_factory,
+            workspace_id=wid,
+            document_id=doc.id,
+            level="warning",
+            scope="yükleme",
+            message="Yükleme iptal edildi (gövde eksik/kesildi) — dosya temizlendi",
+        )
         async with get_factory()() as s:
             d = await s.get(Document, doc.id)
             if d:
@@ -80,6 +97,14 @@ async def upload_document(wid: uuid.UUID, request: Request):
             s.add(job)
             await s.commit()
 
+    await add_doc_log(
+        get_factory,
+        workspace_id=wid,
+        document_id=doc.id,
+        scope="yükleme",
+        message="Dosya diske yazıldı; embed görevi kuyruğa alındı",
+    )
+
     # Embed görevini ARQ kuyruğuna bırak (ayrı worker süreci tüketir).
     try:
         await taskq_enqueue("embed_document", str(wid), str(doc.id), filename)
@@ -89,5 +114,13 @@ async def upload_document(wid: uuid.UUID, request: Request):
             "belge pending'de kalacak; redis/worker gelince recover yeniden zamanlayacak.",
             doc.id,
             exc,
+        )
+        await add_doc_log(
+            get_factory,
+            workspace_id=wid,
+            document_id=doc.id,
+            level="error",
+            scope="yükleme",
+            message=f"Embed görevi kuyruğa atılamadı: {exc} — belge pending'de; recover yeniden zamanlayacak",
         )
     return {"id": str(doc.id), "filename": filename, "status": "pending"}
