@@ -16,7 +16,10 @@ import pymupdf
 
 from ...core.config import get_settings
 from ...core.enums import ContentType
+from ...core.logging import get_logger
 from .. import vision
+
+LOG = get_logger("extract.equations")
 
 # Matematik font adları (alt dize eşleşmesi — subsetli font adları da yakalanır).
 MATH_FONTS = (
@@ -158,13 +161,24 @@ async def extract_equation_via_vision(page, bbox, settings) -> str:
     """Aşama 2 (Vision): bbox kırpımını Vision LLM'e gönderir, saf `$$...$$` LaTeX döndürür."""
     image = await _equation_image(page, bbox, settings)
     if image is None:
+        LOG.warning("[eq] kırpım BOŞ (sayfa sınırı dışı?): bbox=%s", [round(v, 1) for v in bbox])
         return ""
+    LOG.info(
+        "[eq] Vision denklem: bbox=%s kırpım=%d B (padding=%d dpi=%d)",
+        [round(v, 1) for v in bbox],
+        len(image),
+        settings.equation_vision_padding,
+        settings.equation_vision_dpi,
+    )
     try:
         latex = (await vision.describe_image(image, "equation")).strip()
-    except Exception:
+    except Exception as exc:
+        LOG.error("[eq] Vision denklem HATASI: %s", exc, exc_info=True)
         return ""
     if not latex or latex == r"\text{okunamadı}":
+        LOG.warning("[eq] Vision okunamadı döndürdü: %r — raw Unicode kalıyor", (latex or "")[:60])
         return ""
+    LOG.info("[eq] Vision LaTeX alındı: %d karakter", len(latex))
     if latex.startswith("$$") and latex.endswith("$$"):
         latex = latex[2:-2].strip()
     return f"$${latex}$$"
@@ -183,9 +197,20 @@ async def vision_fixup(page, items, settings) -> None:
         latexes = await asyncio.gather(
             *(extract_equation_via_vision(page, it["bbox"], settings) for it in todo)
         )
+        resolved = sum(1 for l in latexes if l)
+        LOG.info(
+            "[eq] vision_fixup: %d denklem adayı, %d tanesi Vision ile çözüldü, %d raw kaldı",
+            len(todo),
+            resolved,
+            len(todo) - resolved,
+        )
         for it, latex in zip(todo, latexes):
             if latex:
                 it["text"] = latex
+    else:
+        LOG.info(
+            "[eq] vision_ready=False — %d denklem Vision'sız raw Unicode olarak kaldı", len(todo)
+        )
     for it in todo:
         it.pop("block_ref", None)
         it.pop("needs_vision", None)

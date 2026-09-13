@@ -1,11 +1,27 @@
 import asyncio
 import base64
+from urllib.parse import urlparse
 
 from ..core.config import get_settings
+from ..core.logging import get_logger
 from ..core.prompts import VISION_PROMPTS
 from . import ai
 
+LOG = get_logger("vision")
+
 _DEFAULT_MIME = "image/png"
+
+# Yapılandırma özeti her süreçte bir kez loglanır (embed job başına tekrar etmez).
+_CFG_LOGGED = False
+
+
+def _base_host(base: str) -> str:
+    """Log'a API key girmeden yalnızca host:kısım yazmak için."""
+    parsed = urlparse(base)
+    host = parsed.hostname or base
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return f"{host}{parsed.path}" if parsed.path else host
 
 # Tüm Vision akışları (sayfa görselleri, denklem fallback'i, scanner) tek bir ortak
 # eşzamanlılık sınırını paylaşır — paralel çalışır ama sağlayıcıya seri darbe yapmaz.
@@ -22,6 +38,19 @@ def _auth(settings) -> tuple[str, str]:
         subject="Vision",
         hint=" web-api/.env dosyasına VISION_BASE_URL ve VISION_API_KEY yazın.",
     )
+    global _CFG_LOGGED
+    if not _CFG_LOGGED:
+        _CFG_LOGGED = True
+        LOG.info(
+            "[vision] YAPILANDIRMA: ready=%s api_key=%s base=%s model=%s "
+            "(dedicated=%s, fallback_llm=%s)",
+            settings.vision_ready,
+            "VAR" if api_key else "YOK",
+            _base_host(base),
+            settings.vision_model,
+            "evet" if settings.vision_api_key else "hayır",
+            "evet" if not settings.vision_api_key and settings.llm_api_key else "hayır",
+        )
     return api_key, base
 
 
@@ -45,6 +74,15 @@ async def analyze_image(
 
     settings = get_settings()
     api_key, base = _auth(settings)
+
+    LOG.info(
+        "[vision] istek: görsel=%d B mime=%s model=%s detail=%s prompt=%r",
+        len(image),
+        mime,
+        settings.vision_model,
+        detail,
+        (prompt or "")[:80],
+    )
 
     image_url: dict = {"url": to_data_uri(image, mime)}
     if detail:
@@ -80,6 +118,7 @@ async def analyze_image(
             error = data.get("error")
             if error:
                 msg = error.get("message") if isinstance(error, dict) else str(error)
+                LOG.error("[vision] API hata payload'ı (attempt %d): %s", attempt, msg)
                 raise ai.AIError(f"Vision hatası: {msg}")
 
             choices = data.get("choices") or []
@@ -88,9 +127,12 @@ async def analyze_image(
                 content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
             text = (content or "").strip()
             if text:
+                LOG.info("[vision] yanıt: attempt=%d metin=%d karakter", attempt, len(text))
                 return text
+            LOG.warning("[vision] attempt %d BOŞ içerik döndü — yeniden deneniyor", attempt)
             await asyncio.sleep(attempt * 1.5)
 
+    LOG.warning("[vision] 3 deneme de boş içerik — AIError'la çıkılıyor")
     raise ai.AIError("Vision servisi boş içerik döndürdü.")
 
 

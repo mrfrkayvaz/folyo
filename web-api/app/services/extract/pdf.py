@@ -11,6 +11,7 @@ from PIL import Image
 from ...core import fs as core_fs
 from ...core.config import get_settings
 from ...core.enums import ContentType
+from ...core.logging import get_logger
 from ..types import Segment
 from . import blocks, equations, images, layout
 from .constants import (
@@ -19,6 +20,8 @@ from .constants import (
     PIXMAP_ZOOM,
 )
 from .errors import ExtractError
+
+LOG = get_logger("extract.pdf")
 
 # Sabit başlık/altbilgi tespiti örnekleme bandı (dikey alanın üst/son yüzdesi).
 REPEAT_SAMPLE_BAND = 0.10
@@ -110,6 +113,7 @@ async def page_segments(
 async def scan_segment(page, page_number: int, rect) -> Segment:
     """Sayfada metin/tablo yoksa tüm sayfayı görsel olarak işle."""
     settings = get_settings()
+    LOG.info("[pdf] sayfa %d TÜMÜ görsel (metin/tablo yok) → taranmış sayfa Vision akışı", page_number)
     pix = page.get_pixmap(matrix=pymupdf.Matrix(PIXMAP_ZOOM, PIXMAP_ZOOM))
     ctype, text, kind = await images.process_image(
         pix.tobytes("png"), settings, classify=False, fail_on_vision_missing=True
@@ -147,6 +151,7 @@ async def _image_items(page, rect, settings, items: list[dict], crop_dir, page_n
     streams = list(_embedded_image_streams(page, rect, settings))
     if not streams:
         return items
+    LOG.info("[pdf] sayfa %d: %d gömülü görsel adayı (OCR/Vision'a gidiyor)", page_number, len(streams))
 
     async def _process(bbox_png):
         bbox, png = bbox_png
@@ -155,6 +160,10 @@ async def _image_items(page, rect, settings, items: list[dict], crop_dir, page_n
         )
 
     processed_all = await asyncio.gather(*(_process(s) for s in streams))
+
+    skipped = sum(1 for p in processed_all if p is None)
+    if skipped:
+        LOG.info("[pdf] sayfa %d: %d/%d görsel adayı ATLANDI (None döndü)", page_number, skipped, len(streams))
 
     idx = 0
     for (bbox, png), processed in zip(streams, processed_all):
@@ -168,6 +177,20 @@ async def _image_items(page, rect, settings, items: list[dict], crop_dir, page_n
             crop_dir.mkdir(parents=True, exist_ok=True)
             await core_fs.write_bytes(crop_dir / name, png)
             image_path = name
+            LOG.info(
+                "[pdf] kırpım kaydedildi: %s/%s (%d B, bbox=%s)",
+                crop_dir,
+                name,
+                len(png),
+                [round(v, 1) for v in bbox],
+            )
+        LOG.info(
+            "[pdf] görsel item: ctype=%s kind=%s metin=%d karakter image_path=%r",
+            ctype,
+            kind,
+            len(text or ""),
+            image_path,
+        )
         items.append(
             {
                 "kind": "image",
@@ -198,15 +221,24 @@ def _embedded_image_streams(page, rect, settings):
         r = rects[0]
         w, h = r.width, r.height
         if min(w, h) < settings.image_min_px:
+            LOG.debug(
+                "[pdf] xref %s atlandı: çok küçük (%.0fx%.0f < image_min_px=%d)",
+                xref, w, h, settings.image_min_px,
+            )
             continue
         big = max(w, h) >= settings.image_min_side_px or (
             w * h >= rect.width * rect.height * settings.image_min_area_ratio
         )
         if not big:
+            LOG.debug(
+                "[pdf] xref %s atlandı: büyük değil (%.0fx%.0f, min_side=%d, min_area_ratio=%.2f)",
+                xref, w, h, settings.image_min_side_px, settings.image_min_area_ratio,
+            )
             continue
         try:
             raw = page.parent.extract_image(xref)
         except Exception:
+            LOG.debug("[pdf] xref %s extract_image başarısız", xref)
             continue
         b = raw.get("image")
         if not b:
