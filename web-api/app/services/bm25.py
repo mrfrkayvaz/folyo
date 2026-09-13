@@ -1,4 +1,4 @@
-"""Saf Python BM25Okapi — Türkçe uyumlu tokenizer + hafif kök (prefix) eşleşmesi.
+r"""Saf Python BM25Okapi — Türkçe uyumlu tokenizer + hafif kök (prefix) eşleşmesi.
 
 Sorun (canlı doğrulandı): eski tokenizer `[a-z0-9_]+` ASCII yalnızca harfleriydi —
 Türkçe `ç ş ğ ö ü ı` token'lardan düşüyor, "çıktığında" → `kt` + `nda` gibi
@@ -18,7 +18,7 @@ _WORD_RE = re.compile(r"[\w]+(?:[-./][\w]+)*")
 
 
 def tokenize_text(text: str) -> list[str]:
-    """Metni küçük harfe indirip Unicode kelime token'larına böler.
+    r"""Metni küçük harfe indirip Unicode kelime token'larına böler.
 
     `text.lower()` Python yerelinden bağımsız Unicode küçültme kullanır
     (İ → i, I → ı doğru çözülür); `\w` Unicode harfleri (çşğöüı dahil),

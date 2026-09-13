@@ -147,6 +147,7 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
             await s.commit()
 
     except Exception as exc:
+        LOG.error("[embed] belge %s embed HATASI: %s", document_id, exc, exc_info=True)
         err_msg = str(exc)
         async with sf() as s:
             doc = await s.get(Document, document_id)
