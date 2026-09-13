@@ -2,11 +2,12 @@
 
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select as sm_select
 
 from shared.core import fs as core_fs
 from ...core.database import get_factory
+from ...core.security import require_auth
 from shared.core.enums import DocumentStatus
 from shared.core.logging import get_logger
 from shared.models import Document, DocumentQuestion, EmbeddingJob
@@ -14,7 +15,7 @@ from shared.services import chroma_store
 from ...services import jobs
 from ...services.jobs import storage_dir
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_auth)])
 LOG = get_logger("api.documents.manage")
 
 

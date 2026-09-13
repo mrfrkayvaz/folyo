@@ -1,19 +1,20 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, func, or_, select as sa_select
 from sqlmodel import select as sm_select
 
 from shared.core import fs as core_fs
 from shared.core.constants import DEFAULT_WORKSPACE_NAME
 from ..core.database import get_factory
+from ..core.security import require_auth
 from shared.models import ChatMessage, Document, DocumentQuestion, Workspace
 from ..schemas.workspace import WorkspaceCreate
 from shared.services import chroma_store
 from ..services.jobs import storage_dir
 
-router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
+router = APIRouter(prefix="/api/workspaces", tags=["workspaces"], dependencies=[Depends(require_auth)])
 
 # Chat geçmişi sayfalama: ilk yüklemede son N mesaj; en üstte imleçli eski parti.
 MESSAGE_PAGE_SIZE = 10

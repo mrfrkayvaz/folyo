@@ -4,11 +4,12 @@ import urllib.parse
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from shared.core import fs as core_fs
 from shared.core.constants import MAX_UPLOAD_SIZE
 from ...core.database import get_factory
+from ...core.security import require_auth
 from shared.core.enums import DocumentStatus
 from shared.core.logging import get_logger
 from shared.core.taskq import enqueue as taskq_enqueue
@@ -17,7 +18,7 @@ from ...services import upload
 from shared.services.extract.constants import SUPPORTED_EXTS
 from ...services.jobs import storage_dir
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_auth)])
 LOG = get_logger("api.documents.upload")
 
 

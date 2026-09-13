@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react"
-import { login } from "@/lib/api"
-import { useAuth } from "@/store/auth"
+import { apiLogin } from "../lib/http"
+import { useAuth } from "../store/auth"
 
 export default function Login() {
   const [username, setUsername] = useState("")
@@ -14,7 +14,7 @@ export default function Login() {
     setError(null)
     setBusy(true)
     try {
-      const res = await login(username.trim(), password)
+      const res = await apiLogin(username.trim(), password)
       doLogin(res.token, res.username)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Giriş başarısız.")

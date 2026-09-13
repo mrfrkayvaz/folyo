@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { getDocumentFileUrlAction } from "../actions/index"
+import { authHeaders } from "../lib/http"
 import type { Attachment } from "../types/attachmentTypes"
 
 const IMAGE_RE = /\.(png|jpe?g|webp|bmp|tiff?)$/i
@@ -56,7 +57,7 @@ export function useFilePreview(attachment?: Attachment | null): FilePreview {
             if (isMounted) setContent(text)
           }
         } else if (attachment.docId) {
-          const res = await fetch(getDocumentFileUrlAction(attachment.docId))
+          const res = await fetch(getDocumentFileUrlAction(attachment.docId), { headers: authHeaders() })
           if (!res.ok) throw new Error(`Dosya içeriği alınamadı (HTTP ${res.status})`)
 
           if (isPdf) {

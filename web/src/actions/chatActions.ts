@@ -1,4 +1,4 @@
-import { apiUrl, httpErrorMessage } from "../lib/http"
+import { apiUrl, httpErrorMessage , authHeaders } from "../lib/http"
 import type { QaEventMap, QaEventName, QaEventPayload } from "../types/chatTypes"
 
 async function consumeStream(res: Response, onEvent: (event: QaEventName, data: QaEventPayload) => void) {
@@ -44,7 +44,7 @@ export interface AskQaOptions {
 export async function askQAAction(workspaceId: string, question: string, { onEvent }: AskQaOptions) {
   const res = await fetch(apiUrl(`/api/workspaces/${workspaceId}/qa`), {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...authHeaders() },
     body: JSON.stringify({ question }),
   })
   await consumeStream(res, onEvent)

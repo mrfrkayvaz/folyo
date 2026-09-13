@@ -1,16 +1,38 @@
+import { useEffect } from "react"
 import ChatMain from "./components/ChatMain"
 import Composer from "./components/Composer"
 import ConfirmModal from "./components/ConfirmModal"
 import FileBar from "./components/FileBar"
 import FilePreviewModal from "./components/preview/FilePreviewModal"
 import Header from "./components/Header"
+import Login from "./components/Login"
 import Sidebar from "./components/Sidebar"
 import { ACCEPTED_FILE_ATTR } from "./constants/index"
 import { useAppState } from "./hooks/useAppState"
+import { apiMe } from "./lib/http"
+import { useAuth } from "./store/auth"
 
-/** Görünüm iskeleti — tüm oturum düzenlemesi `useAppState` hook'undadır. */
+/**
+ * Giriş kapısı: token yoksa Login. Token varsa ana görünüm (ChatApp) mount olur ve
+ * `useAppState` ilk yüklemesini TAZE yapar (girişten ÖNCE workspace çekmez → ilk
+ * girişte sohbetler boş kalmaz).
+ */
 export default function App() {
+  const token = useAuth((s) => s.token)
+  if (!token) {
+    return <Login />
+  }
+  return <ChatApp />
+}
+
+function ChatApp() {
   const s = useAppState()
+  const logout = useAuth((s) => s.logout)
+
+  // Oturum geri yükleme: stored token'ı sunucuda doğrula (geçersizse çıkış).
+  useEffect(() => {
+    apiMe().catch(() => useAuth.getState().logout())
+  }, [])
 
   return (
     <div className="flex h-dvh bg-base-100 text-base-content">
@@ -28,6 +50,7 @@ export default function App() {
           onToggleTheme={s.toggle}
           onBack={s.inWorkspace ? s.newChat : undefined}
           title={s.chatTitle}
+          onLogout={logout}
         />
 
         {s.att.attachments.length > 0 && (

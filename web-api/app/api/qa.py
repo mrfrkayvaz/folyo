@@ -1,18 +1,19 @@
 import json
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from shared.core.constants import ERROR_QA_GENERIC_FAILURE
 from ..core.database import get_factory
+from ..core.security import require_auth
 from shared.core.enums import ChatRole
 from shared.core.logging import get_logger
 from shared.models import ChatMessage, Workspace
 from ..schemas.chat import QaBody
 from ..services.rag import qa_events
 
-router = APIRouter(prefix="/api/workspaces", tags=["qa"])
+router = APIRouter(prefix="/api/workspaces", tags=["qa"], dependencies=[Depends(require_auth)])
 LOG = get_logger("api.qa")
 
 

@@ -1,9 +1,10 @@
-import { useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import katex from "katex"
 import CitationBadge from "./CitationBadge"
 import CodeBlock from "./CodeBlock"
 import { parseBlocks, parseInline } from "../lib/markdown"
 import { apiUrl } from "../lib/apiBase"
+import { authHeaders } from "../lib/http"
 import type { Block, InlineNode, ListBlock } from "../lib/markdown"
 import type { CitationClickTarget } from "../types/chatTypes"
 
@@ -35,11 +36,45 @@ function MathView({ tex, display }: { tex: string; display: boolean }) {
   return <span dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-/** Görsel yer tutucusu `[Görsel: belge_id/dosya_adı]` → kırpım URL'i. */
+/** Görsel yer tutucusu `[Görsel: belge_id/dosya_adı]` → kırpım URL'i (medya token'lıdır). */
 function imageSrc(path: string): string | null {
   const slash = path.indexOf("/")
   if (slash <= 0 || slash >= path.length - 1) return null
   return apiUrl(`/api/documents/${path.slice(0, slash)}/crops/${path.slice(slash + 1)}`)
+}
+
+/** Korumalı kırpım görseli — token ile blob çekip object URL üretir (401'de boş bırakır). */
+function AuthImage({ src, alt, title }: { src: string; alt: string; title: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let mounted = true
+    let rev: string | null = null
+    setUrl(null)
+    fetch(src, { headers: authHeaders() })
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status))
+        return res.blob()
+      })
+      .then((blob) => {
+        if (mounted) {
+          rev = URL.createObjectURL(blob)
+          setUrl(rev)
+        }
+      })
+      .catch(() => {
+        /* oturumsuz istekte görsel yüklenmez — sessiz geç */
+      })
+    return () => {
+      mounted = false
+      if (rev) URL.revokeObjectURL(rev)
+    }
+  }, [src])
+  if (!url) {
+    return <div className="my-2 h-10 w-full animate-pulse rounded-xl bg-base-200/50" />
+  }
+  return (
+    <img src={url} alt={alt} title={title} className="my-2 block max-h-96 w-full rounded-xl border border-base-300 object-contain" />
+  )
 }
 
 /** Satır içi düğüm ağacı → React öğeleri (özyinelemeli). */
@@ -65,15 +100,7 @@ function inlineNodes(nodes: InlineNode[], onCitationClick: (target: CitationClic
               {n.path}
             </span>
           )
-        return (
-          <img
-            key={i}
-            src={src}
-            alt={n.path}
-            title={n.path}
-            className="my-2 block max-h-96 w-full rounded-xl border border-base-300 object-contain"
-          />
-        )
+        return <AuthImage key={i} src={src} alt={n.path} title={n.path} />
       }
       case "math":
         return <MathView key={i} tex={n.tex} display={n.display} />

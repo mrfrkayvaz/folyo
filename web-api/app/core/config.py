@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     vision_base_url: str = ""
     vision_model: str = ""
 
+    # Web girişi (auth) — HMAC token anahtarı + süre. Prod'da AUTH_SECRET set edilmeli.
+    auth_secret: str = ""
+    auth_token_ttl_hours: int = 24
+
     database_url: str = ""
     chroma_dir: str = "chroma_data"
     storage_dir: str = "storage"

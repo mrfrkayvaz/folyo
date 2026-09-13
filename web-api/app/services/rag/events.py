@@ -2,7 +2,7 @@
 
 import asyncio
 
-from ..core.config import get_settings
+from ...core.config import get_settings
 from shared.core.constants import ERROR_NO_EMBEDDED_DOCS, ERROR_NO_SIMILAR_CONTEXT
 from shared.services import bm25_index, chroma_store, embeddings, llm
 from .retrieval import (

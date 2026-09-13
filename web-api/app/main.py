@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .core.config import get_settings
 
@@ -44,3 +45,10 @@ if _origins:
     )
 
 app.include_router(api_router)
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return JSONResponse(
+        {"service": "Folyo Web API", "status": "ok", "açıklama": "Arayüz: panel=:5174 / web=:5173", "docs": "/docs"}
+    )

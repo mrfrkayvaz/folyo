@@ -1,4 +1,4 @@
-import { apiUrl, jfetch } from "../lib/http"
+import { apiUrl, jfetch , authHeaders } from "../lib/http"
 import type { DocumentItem } from "../types/documentTypes"
 
 export interface UploadResult {
@@ -16,6 +16,7 @@ export async function uploadDocumentAction(workspaceId: string, file: File): Pro
     headers: {
       "Content-Type": "application/octet-stream",
       "X-Filename": encodeURIComponent(file.name),
+      ...authHeaders(),
     },
     body: file,
   })

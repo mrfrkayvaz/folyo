@@ -32,7 +32,7 @@ async function jfetch<T>(path: string, opts: JFetchOptions = {}): Promise<T> {
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   })
 
-  if (res.status === 401) {
+  if (res.status === 401 && !path.startsWith("/auth/login")) {
     useAuth.getState().logout()
     throw new Error("Oturum süresi doldu, tekrar giriş yapın.")
   }

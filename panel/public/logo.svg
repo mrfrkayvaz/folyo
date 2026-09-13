@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Modern Soft Gradient for Accent Leaf / Retrieval Node -->
+    <linearGradient id="ai-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+
+    <!-- Subtle Depth Gradient for Base Layers -->
+    <linearGradient id="layer-back" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#334155" />
+    </linearGradient>
+    
+    <linearGradient id="layer-mid" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#475569" />
+    </linearGradient>
+
+    <!-- Soft Drop Shadow for Dimension -->
+    <filter id="subtle-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.18" />
+    </filter>
+
+    <!-- Sol üstü pürüzsüzleştirilmiş referans yaprak -->
+    <path id="leaf" d="M195 230 C195 315, 255 345, 320 345 C385 345, 420 280, 420 180 C420 85, 325 75, 275 83 C210 100, 195 155, 195 230 Z" />
+  </defs>
+
+  <rect width="512" height="512" fill="none" />
+
+  <!-- Logo Mark Group -->
+  <g transform="translate(0, 10)" filter="url(#subtle-shadow)">
+    <!-- Layer 1: En Alttaki Katman -->
+    <use href="#leaf" transform="translate(-18, 22)" fill="url(#layer-back)" opacity="0.95" />
+
+    <!-- Layer 3: En Üstteki Katman -->
+    <use href="#leaf" fill="url(#ai-glow)" />
+  </g>
+</svg>

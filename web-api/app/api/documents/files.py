@@ -3,14 +3,15 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from ...core.database import get_factory
+from ...core.security import require_auth
 from shared.models import Document
 from ...services.jobs import storage_dir
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 @router.get("/documents/{did}/file")

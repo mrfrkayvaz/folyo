@@ -6,9 +6,10 @@ interface HeaderProps {
   onToggleTheme: () => void
   onBack?: () => void
   title: string
+  onLogout?: () => void
 }
 
-export default function Header({ theme, onToggleTheme, onBack, title }: HeaderProps) {
+export default function Header({ theme, onToggleTheme, onBack, title, onLogout }: HeaderProps) {
   const dark = theme === "gemdark"
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4">
@@ -24,6 +25,16 @@ export default function Header({ theme, onToggleTheme, onBack, title }: HeaderPr
         </button>
       )}
       <span className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">{title || ""}</span>
+      {onLogout && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm shrink-0 px-2"
+          onClick={onLogout}
+          title="Çıkış yap"
+        >
+          Çıkış Yap
+        </button>
+      )}
       <button
         type="button"
         className="btn btn-circle btn-ghost shrink-0"
