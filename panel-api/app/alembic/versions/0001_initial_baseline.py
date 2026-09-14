@@ -31,7 +31,6 @@ def upgrade() -> None:
     )
     op.execute("CREATE TYPE chat_role AS ENUM ('user','assistant')")
 
-    # ── workspaces ──
     op.create_table(
         "workspaces",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -42,7 +41,6 @@ def upgrade() -> None:
     )
     op.create_index("ix_workspaces_name", "workspaces", ["name"])
 
-    # ── documents ──
     op.create_table(
         "documents",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -74,7 +72,6 @@ def upgrade() -> None:
     )
     op.create_index("ix_documents_workspace_id", "documents", ["workspace_id"])
 
-    # ── document_questions ──
     op.create_table(
         "document_questions",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -116,7 +113,6 @@ def upgrade() -> None:
     )
     op.create_index("ix_embeddings_document_id", "embeddings", ["document_id"], unique=True)
 
-    # ── chat_messages ──
     op.create_table(
         "chat_messages",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),

@@ -51,7 +51,6 @@ def test_tokenize_apostrophe_is_separator():
     assert set(toks) == {"ali", "nin"}
 
 
-# ── BM25Okapi ─────────────────────────────────────────────────────────────
 
 def test_empty_corpus_safe():
     idx = BM25Okapi([])

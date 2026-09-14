@@ -28,7 +28,6 @@ class FakeTable:
         return self._rows
 
 
-# ── _text_item ────────────────────────────────────────────────────────────
 
 def test_text_item_outside_y_band_is_none():
     b = _block((0, 100, 100, 120), [_line(_span("alt"))])
@@ -108,7 +107,6 @@ def test_slight_table_overlap_is_kept():
     assert blocks._text_item(b, 0, 100, [t]) is not None
 
 
-# ── overlaps_table ────────────────────────────────────────────────────────
 
 def test_overlaps_table_zero_area_bbox():
     t = FakeTable((0.0, 0.0, 10.0, 10.0), [])
@@ -120,7 +118,6 @@ def test_overlaps_table_half_area():
     assert blocks.overlaps_table((0.0, 0.0, 10.0, 5.1), [t]) is True  # %51
 
 
-# ── collect_items ─────────────────────────────────────────────────────────
 
 def test_collect_items_filters_non_text_blocks():
     blocks_in = [

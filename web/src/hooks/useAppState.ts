@@ -107,7 +107,6 @@ export function useAppState() {
     }
   }
 
-  // ----- Seçimler & ek işlemler -----
   const handleSend = (rawText: string) => {
     if (chat.busy) return
     void chat.ask(rawText)
@@ -137,7 +136,6 @@ export function useAppState() {
     if (wasActive) newChat()
   }
 
-  // ----- Dosya seçimi -----
   const pickFile = () => {
     if (chat.chatStarted) return
     fileRef.current?.click()
@@ -156,7 +154,6 @@ export function useAppState() {
     att.acceptFiles(files)
   }
 
-  // ----- Görünüm türevleri -----
   const inWorkspace = Boolean(ws.activeWorkspaceId || ws.activeWorkspace)
   const chatStarted = chat.chatStarted
   // Embed işlemleri (upload + tarama) SURERKEN soru inputu asla gözükmez;

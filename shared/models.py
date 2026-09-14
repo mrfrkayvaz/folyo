@@ -153,7 +153,6 @@ class QaLog(SQLModel, table=True):
             ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=True, index=True
         )
     )
-    # info | warning | error
     level: str = Field(default="info", sa_column=Column(Text, nullable=False))
     stage: str = Field(default="", sa_column=Column(Text, nullable=False))
     message: str = Field(default="", sa_column=Column(Text, nullable=False))
