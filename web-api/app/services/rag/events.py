@@ -2,9 +2,17 @@
 
 import asyncio
 
+from sqlmodel import select
+
 from ...core.config import get_settings
 from ...core.database import get_factory
-from shared.core.constants import ERROR_NO_EMBEDDED_DOCS, ERROR_NO_SIMILAR_CONTEXT
+from shared.core.constants import (
+    ERROR_EMBED_IN_PROGRESS,
+    ERROR_NO_EMBEDDED_DOCS,
+    ERROR_NO_SIMILAR_CONTEXT,
+)
+from shared.core.enums import DocumentStatus, EmbeddingStatus
+from shared.models import Document, EmbeddingJob
 from shared.services import bm25_index, chroma_store, embeddings, llm
 from shared.services.qalogs import add_log as qa_log
 from .retrieval import (
@@ -21,6 +29,30 @@ async def qa_events(workspace_id, question: str, message_id=None):
 
     async def log(stage: str, level: str, msg: str) -> None:
         await qa_log(get_factory, workspace_id=workspace_id, message_id=message_id, level=level, stage=stage, message=msg)
+
+    # Aktif embed yazımı sürüyorken soru sorulursa chroma'ya okuma atma — multi-process
+    # yarışı 'Error finding id' üretir ve akış boş kalır. Bir süre bekletip kibarca bilgilendir.
+    try:
+        async with sf() as s:
+            busy = (
+                await s.execute(
+                    select(EmbeddingJob.id)
+                    .join(Document, Document.id == EmbeddingJob.document_id)
+                    .where(Document.workspace_id == workspace_id)
+                    .where(
+                        (EmbeddingJob.status == EmbeddingStatus.pending)
+                        | (EmbeddingJob.status == EmbeddingStatus.running)
+                    )
+                    .limit(1)
+                )
+            ).first()
+    except Exception:
+        busy = None  # DB erişimi başarısızsa normal akışı dene (race koruması devre dışı)
+
+    if busy is not None:
+        await log("bekleme", "warning", "Aktif embed sürüyor — soru bekletildi")
+        yield {"type": "error", "message": ERROR_EMBED_IN_PROGRESS}
+        return
 
     await log("başlangıç", "info", "QA isteği başladı")
 

@@ -57,7 +57,7 @@ export default function FilePreviewModal({ attachment, onClose }: FilePreviewMod
           </button>
         </div>
 
-        <div className="flex min-h-[300px] flex-1 flex-col p-0">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-0">
           <FileViewer
             loading={preview.loading}
             error={preview.error}

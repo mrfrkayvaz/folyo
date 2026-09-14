@@ -11,7 +11,7 @@ interface FileBarProps {
 
 export default function FileBar({ attachments, onRemove, onPreview }: FileBarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-start gap-2 border-b border-base-300/40 bg-base-100 px-3 py-2 sm:px-4">
+    <div className="flex items-center gap-2 overflow-x-auto border-b border-base-300/40 bg-base-100 px-3 py-2 sm:px-4">
       {attachments.map((a) => {
         const busy = a.phase === "queued" || a.phase === DocumentStatus.UPLOADING || a.phase === DocumentStatus.EMBEDDING
         const removable = !busy
@@ -20,7 +20,7 @@ export default function FileBar({ attachments, onRemove, onPreview }: FileBarPro
           <div
             key={a.key}
             onClick={() => onPreview?.(a)}
-            className={`inline-flex cursor-pointer select-none min-w-0 items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition hover:border-primary/50 hover:bg-base-200 ${
+            className={`inline-flex cursor-pointer select-none shrink-0 items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition hover:border-primary/50 hover:bg-base-200 ${
               err ? "border-error/40 bg-error/5" : "border-base-300 bg-base-200/70"
             }`}
             title="Önizlemek için tıklayın"

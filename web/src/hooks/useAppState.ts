@@ -159,7 +159,9 @@ export function useAppState() {
   // ----- Görünüm türevleri -----
   const inWorkspace = Boolean(ws.activeWorkspaceId || ws.activeWorkspace)
   const chatStarted = chat.chatStarted
-  const showComposer = !att.hasFailed && ((att.totalCount > 0 && !att.uploading) || chatStarted)
+  // Embed işlemleri (upload + tarama) SURERKEN soru inputu asla gözükmez;
+  // hem yeni dosya öncesi hem de sohbet devam ederken güvenli davranır.
+  const showComposer = !att.hasFailed && !att.uploading && (att.totalCount > 0 || chatStarted)
 
   const updCount = att.attachments.filter((a) => a.phase === DocumentStatus.UPLOADING).length
   const embCount = att.attachments.filter((a) => a.phase === DocumentStatus.EMBEDDING).length

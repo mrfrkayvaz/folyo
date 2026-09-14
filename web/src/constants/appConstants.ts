@@ -6,7 +6,7 @@ export const DEFAULT_CHAT_TITLE = "Yeni sohbet"
 export const STATUS_POLL_INTERVAL_MS = 2000
 
 export const ALLOWED_EXTENSIONS: RegExp = /^([^.]+\.)?(pdf|txt|md|png|jpg|jpeg|webp|bmp|tif|tiff)$/i
-export const ACCEPTED_FILE_ATTR = ".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp"
+export const ACCEPTED_FILE_ATTR = ".pdf,.txt,.md,.jpg,.jpeg,.png,.webp"
 
 export const UNSUPPORTED_FILES_MSG = "Yalnızca PDF, JPG, PNG, TXT veya MD dosyaları yüklenebilir."
 export const PARTIAL_UNSUPPORTED_MSG =

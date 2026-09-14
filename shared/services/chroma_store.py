@@ -5,6 +5,7 @@ import time
 
 import anyio
 import chromadb
+import numpy as np
 from chromadb.config import Settings as ChromaSettings
 
 from ..core.config import get_settings
@@ -98,11 +99,12 @@ def _reset_client(why: str) -> None:
         _collection = None
 
 
-def _run_with_reopen_retry(fn, *args, attempts: int = 3):
+def _run_with_reopen_retry(fn, *args, attempts: int = 3, backoff: float = 0.3):
     """`fn`'i çalıştırır; Chroma hatasında istemciyi sıfırlayıp yeniden dener.
 
     Boyut uyuşmazlığı (`AIError`) tanısal hatadır → yeniden denenmez, fırlatılır.
-    Geçici kilit ("database is locked") için denemeler arasında kısa bekleme vardır.
+    Geçici kilit ve "Error finding id" (çok süreçli yazma/okuma yarışı kaynaklı
+    HNSW-SQLite ayrışması) için denemeler arasında üstel bekleme vardır.
     """
     last: Exception | None = None
     for i in range(attempts):
@@ -114,7 +116,7 @@ def _run_with_reopen_retry(fn, *args, attempts: int = 3):
             last = exc
             if i + 1 < attempts:
                 _reset_client(f"{type(exc).__name__}: {exc} (deneme {i + 1})")
-                time.sleep(0.3 * (i + 1))
+                time.sleep(backoff * (i + 1))
     assert last is not None
     raise last
 
@@ -213,7 +215,8 @@ def _delete_ws_sync(workspace_id: str) -> None:
 
 
 def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
-    return _run_with_reopen_retry(_query_sync_inner, workspace_id, vec, top_k)
+    # Okuma yolu: embed batch yazımıyla çakışabilir → daha uzun/çok deneme (toplam ~7.5 sn)
+    return _run_with_reopen_retry(_query_sync_inner, workspace_id, vec, top_k, attempts=5, backoff=0.5)
 
 
 def _query_sync_inner(workspace_id: str, vec, top_k: int) -> list[dict]:
@@ -229,6 +232,20 @@ def _query_sync_inner(workspace_id: str, vec, top_k: int) -> list[dict]:
                 f"Embed boyutu koleksiyonla uyuşmuyor ({exc}) — sorgu yapılamıyor. "
                 "Koleksiyon yeniden indekslenmelidir."
             ) from exc
+        if "finding id" in str(exc).lower():
+            # Çok süreçli yazma/okuma sonrası ANN (HNSW) segmenti sürece özgü bozuk
+            # okunabilir; SQLite tarafı (metadata + gömülüler) sağlamdır → exact kosinüs.
+            try:
+                LOG.warning("[chroma] HNSW okuma bozuk ('finding id') — exact kosinüs fallback")
+                return _exact_query_sync(workspace_id, vec, top_k)
+            except Exception as fexc:
+                LOG.warning(
+                    "[chroma] exact fallback BAŞARISIZ (%s): %s — taze istemciyle denendi, "
+                    "süreç içi Chroma durumu bozuk kalabilir; restart gerekebilir",
+                    type(fexc).__name__,
+                    fexc,
+                )
+                raise  # orijinal hatayı yeniden yükselt → dış retry döngüsü devam eder
         raise
 
     ids = (res.get("ids") or [[]])[0]
@@ -238,6 +255,52 @@ def _query_sync_inner(workspace_id: str, vec, top_k: int) -> list[dict]:
     return [
         chroma_codec.parse_query_row(metas[i] or {}, docs[i] or "", dists[i] if i < len(dists) else None)
         for i in range(len(ids))
+    ]
+
+
+def _exact_query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
+    """HNSW okuma bozulduğunda SQLite segmentinden exact cosine sorgusu.
+
+    İki katman: önce modül-cache istemci; o da bozuksa (aynı süreçteki rust durumu)
+    TAZE standalone istemci açılır (hangisi sağlıklıysa o çalışır).
+    """
+    try:
+        return _exact_via_collection(_col(), workspace_id, vec, top_k)
+    except Exception:
+        _reset_client("exact fallback için taze istemci")
+        fresh = chromadb.PersistentClient(
+            path=get_settings().chroma_dir,
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
+        try:
+            col = fresh.get_collection("documents")
+            return _exact_via_collection(col, workspace_id, vec, top_k)
+        finally:
+            try:
+                fresh.close()
+            except Exception:
+                pass
+
+
+def _exact_via_collection(collection, workspace_id: str, vec, top_k: int) -> list[dict]:
+    res = collection.get(
+        where={"workspace_id": workspace_id},
+        include=["embeddings", "documents", "metadatas"],
+    )
+    ids = res.get("ids") or []
+    if not ids:
+        return []
+    embs = np.asarray(res.get("embeddings") or [], dtype=np.float32)
+    docs = res.get("documents") or []
+    metas = res.get("metadatas") or []
+    q = np.asarray(vec, dtype=np.float32)
+    qn = float(np.linalg.norm(q)) or 1.0
+    en = np.linalg.norm(embs, axis=1)
+    sims = (embs @ q) / (en * qn + 1e-9)
+    order = np.argsort(-sims)[:top_k]
+    return [
+        chroma_codec.parse_query_row(metas[int(i)] or {}, docs[int(i)] or "", 1.0 - float(sims[i]))
+        for i in order
     ]
 
 

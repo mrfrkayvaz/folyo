@@ -109,6 +109,8 @@ async def ask(wid: uuid.UUID, body: QaBody):
                 await s.commit()
         except Exception:
             LOG.exception("QA akışı başarısız (wid=%s, soru=%r)", wid, question)
+            # İstemci boş akışla kalmasın — açık hata event'i gönder
+            yield _sse("error", {"message": ERROR_QA_GENERIC_FAILURE})
             try:
                 await qa_log(
                     get_factory, workspace_id=wid, message_id=user_msg.id,

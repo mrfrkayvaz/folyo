@@ -76,7 +76,7 @@ export default function InspectModal({ message: m, onClose }: InspectModalProps)
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
 
       <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-base-200 px-5 py-3">
+        <div className="flex items-center justify-between px-5 py-3">
           <h3 className="text-base font-semibold tracking-tight text-base-content">Yanıt incelemesi</h3>
           <button
             type="button"

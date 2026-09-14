@@ -13,7 +13,6 @@ from shared.core import fs as core_fs
 from shared.core.enums import ContentType
 from shared.services.types import Segment
 from shared.services.extract.constants import PAGE_CONTEXT_CHARS, SUPPORTED_EXTS
-from .docx import docx_segments
 from .errors import ExtractError
 from .images import image_segments
 from .pdf import pdf_segments
@@ -40,7 +39,6 @@ async def _text_segment(content: bytes, crop_dir=None) -> list[Segment]:
 # ── Ele alma mekanizması: uzantı → işleyici ───────────────────────────────
 _HANDLERS: dict[str, Handler] = {
     ".pdf": pdf_segments,
-    ".docx": docx_segments,
     ".txt": _text_segment,
     ".md": _text_segment,
     ".png": image_segments,

@@ -43,19 +43,15 @@ export default function AssistantMessage({ m, onCitationClick }: AssistantMessag
           </>
         )}
 
-        {inspectable && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            {confMeta && m.confidence != null && (
-              <span className={`badge ${confMeta.cls} badge-soft badge-sm gap-1`}>
-                {confMeta.label} · %{Math.round(m.confidence)}
-              </span>
-            )}
+        {inspectable && confMeta && m.confidence != null && (
+          <div className="pt-1">
             <button
               type="button"
               onClick={() => setShowInspect(true)}
-              className="btn btn-ghost btn-xs gap-1 border border-base-300 text-base-content/70 hover:border-primary/50 hover:text-primary"
+              title="İncele"
+              className={`badge ${confMeta.cls} badge-soft badge-sm cursor-pointer gap-1 transition hover:brightness-95`}
             >
-              İncele
+              {confMeta.label} · %{Math.round(m.confidence)}
             </button>
           </div>
         )}
