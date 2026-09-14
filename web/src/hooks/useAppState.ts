@@ -96,7 +96,13 @@ export function useAppState() {
       const docs = d.documents ?? []
       if (docs.length) {
         att.setFromDocuments(docs)
-        if (docs.some((doc) => !terminalPhase(mapDocPhase(doc.status)))) att.startPolling(id)
+        // Polling yalnızca "işlenmemiş belge var"ken değil, workspace özeti henüz
+        // üretilmemişken de sürmeli. Özet embed'ten SONRA asenkron gelir (enrich → 2sn erteleme);
+        // bu anda tüm belgeler terminal olsa bile polling devam etmezse özet ancak refresh'te görünür.
+        const wsSummary = (d.workspace?.summary ?? (d as unknown as Workspace).summary) || null
+        const needPoll =
+          docs.some((doc) => !terminalPhase(mapDocPhase(doc.status))) || !wsSummary
+        if (needPoll) att.startPolling(id)
       }
       chat.setFromApi(d.messages?.map(mapApiMessage) ?? [], d.has_more)
     } catch {

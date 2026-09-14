@@ -183,6 +183,10 @@ aynı sebeple re-ranker mimarisini de eledim. bu mimari chunklar'ı basit bir cr
 
 mimari kararları koda dökmeden önce arch.md yöntemim var: konuyu adım adım llm ile konuşup son haline getiriyorum, belirsiz kalan yerlerde bana soru sormasını istiyorum, karşılıklı netleştiriyorum. dosya netleşince geriye sadece onu koda dökmek kalıyor.
 
+### 10.09.26 cosine yerine l2 metriğini kullanıyordum
+
+bir süre dense skorlar hep düşük ya da negatif geliyordu, eşik asla geçilmiyordu. her şeyi bm25 taşıyordu. uzun süre eşiklerle uğraştım. sonra koleksiyonun eski kurulumdan kalma l2 uzayıyla oluşturulduğunu fark ettim. chroma bana distance veriyordu. ben de skoru 1 - distance diye hesaplıyordum. l2 skoru karesel uzaklık olduğu için bu negatif çöp üretiyordu. cosine olarak düzeltip yeniden belgeleri embed'ledim ve skorlar gerçek kosinüslere (+0.31…+0.34) oturdu.
+
 ### 11.09.26 qa boş yanıt veriyordu
 
 belge yüklenip embedlendikten sonra sorulara boş dönüyordu. nedenini uzunca bir süre araştırdım. en son buldum. chroma sqlite dosya tabanlı. web-api ve worker iki ayrı süreç ama aynı dosyaya erişiyor. çözüm için chroma'yı http/single-writer moda aldım.
@@ -195,9 +199,11 @@ başta embed işlerini web-api sürecinde `asyncio.create_task` ile koşturuyord
 
 en başta bir panel bile kurmak istemedim. ancak sonrasında yönetim için gerektiğini fark ettim. sonrasında kodların çok izole ve atomik olmasını istediğim için worker işlemlerini ayrı bir servise taşıdım. bu güzel bir avantajdı. ancak bir dezavantaj getirdi. kopya dosyalar oluştu. çözüm için shared servisi oluşturup ortak dosyaları buraya aldım.
 
-### 14.09.26 cosine yerine l2 metriğini kullanıyordum
+### 14.09.26 text llm promptu yetersizdi
 
-bir süre dense skorlar hep düşük ya da negatif geliyordu, eşik asla geçilmiyordu. her şeyi bm25 taşıyordu. uzun süre eşiklerle uğraştım. sonra koleksiyonun eski kurulumdan kalma l2 uzayıyla oluşturulduğunu fark ettim. chroma bana distance veriyordu. ben de skoru 1 - distance diye hesaplıyordum. l2 skoru karesel uzaklık olduğu için bu negatif çöp üretiyordu. cosine olarak düzeltip yeniden belgeleri embed'ledim ve skorlar gerçek kosinüslere (+0.31…+0.34) oturdu.
+halüsinasyon görmemesi için prompta katı bir şekilde belgeye sadık kalması gerektiğini eklemiştim. bu sefer de belgenin iki farklı yerinden bir araya getirip yorumlayabileceği şeyleri yorumlamıyor ve belgede bunlar yok diyordu. [TESTING.md](http://TESTING.md) içerisinde bunun örneği var. çok ama çok kritik bir o kadar da basit bir eklemeyle prompt içerisinde yorum yeteneği de bıraktım. tabi ki yorumladığı şeyler yine belgeden elde ettiği şeylerden ibaret. mantıksal çıkarımlar yapmasının önünü açmış oldum sadece.
+
+
 
 ### Zamanlama
 

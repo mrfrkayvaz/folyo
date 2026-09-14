@@ -30,15 +30,20 @@ export function useAttachmentPolling({ apply, onWorkspace, getAttachments }: Use
     pollWidRef.current = null
   }, [])
 
-  const start = useCallback(
-    (wid: string) => {
-      if (pollWidRef.current === wid && pollRef.current) return
-      stop()
-      pollWidRef.current = wid
-      pollRef.current = setInterval(async () => {
-        const widNow = pollWidRef.current
-        if (!widNow) return
-        try {
+  // Özet üretimi başarısızlığında sonsuz polling olmasın: tüm belgeler terminalken
+  // ve özet bir süre gelmezse otomatik dur (ölü "hazırlanıyor…" yerine kullanıcı refresh alır).
+  const MAX_POLL_TICKS = 150 // 2 sn aralık → ~5 dk bekleme tavanı
+
+  const start = useCallback((wid: string) => {
+    if (pollWidRef.current === wid && pollRef.current) return
+    stop()
+    pollWidRef.current = wid
+    let ticks = 0
+    pollRef.current = setInterval(async () => {
+      const widNow = pollWidRef.current
+      if (!widNow) return
+      ticks++
+      try {
           const d = await getWorkspaceAction(widNow)
           const docs = new Map((d.documents ?? []).map((x: DocumentItem) => [x.id, x]))
           const wsObj = d.workspace ?? (d as unknown as Workspace)
@@ -77,7 +82,7 @@ export function useAttachmentPolling({ apply, onWorkspace, getAttachments }: Use
           })
           if (getAttachments().every((a) => terminalPhase(a.phase))) {
             const embedded = getAttachments().filter((a) => a.phase === DocumentStatus.EMBEDDED).length
-            if (embedded === 0 || wsObj.summary) stop()
+            if (embedded === 0 || wsObj.summary || ticks >= MAX_POLL_TICKS) stop()
           }
         } catch {
           /* ağ hatası: bir sonraki turda tekrar dene */
