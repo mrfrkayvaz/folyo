@@ -161,20 +161,52 @@ $$
 
 Altta beni en çok oyalayan hataları, durumları ve aldığım irili ufaklı karar senaryolarına yer verdim.
 
-### qa boş yanıt veriyordu
+### 09.09.26 pdf önizlemede vurgulama denemesi
+
+pdf önizlemesinde kaynağın geçtiği yeri vurgulamayı denedim ama tam istediğim gibi olmadı. çünkü chrome kendi pdf önizleme aracında çizim işini biraz zorlaştırıyor. on-the-fly şekilde pdf render front end kısmını biraz yoruyor. şimdilik bu fikri bıraktım.
+
+### 09.09.26 top_k ile yanlış parça sayısı, threshold geldi
+
+sistem ilgisiz sorularda bile en alakalı 6 parçayı döndürüyordu ve ön yüz "yararlanılan parça" olarak 6 gösteriyordu. bu hem gereksiz maliyetti hem yanlış gösterimdi. bir threshold ekledim; eşiğin altında kalan parçalar değerlendirmeye girmiyor. böylece hem llm'e giden veri azaldı hem ön yüzdeki parça sayısı doğru olmaya başladı.
+
+### 10.09.26 birebir eşleşme: regex mi bm25 mi?
+
+spesifik bilgilerde (fatura no, tc no, telefon) semantik yakınlık yetmiyor. birebir eşleşme gerekiyor. bu noktada iki seçenek vardı: regex ya da bm25. regex ancak belge türlerini bilirsek işe yarar. sistemimize her tür belge girebildiği için sadece bm25 kullandım ve custom bir tokenizer yazdım: sayılar arasındaki - işaretleri de dahil. daha spesifik RAG sistemleri için farklı custom tokenizer'lar yazılabilir.
+
+### 10.09.26 HyDE ve re-ranker'a baktım, ikisini de almadım
+
+HyDE sistmei yani soruyu llm'de genişletip o şekilde embed'leme mimarisini sistemime dahil etmedim. soyut sorularda eşleşmeyi artırabilir ama gecikme ve maliyet getiriyor.
+
+aynı sebeple re-ranker mimarisini de eledim. bu mimari chunklar'ı basit bir cross-encoder llm'e gönderip ona sıralatma şeklinde. ek bir model, ek maliyet ve gecikmeye sebep olduğu için bu kısmı eledim. ikisinin yerine dense ve bm25 skorlarını birleştirip karma bir skor üretip sıralamayı buradan yapmayı seçtim.
+
+### 10.09.26 mimariyi arch.md üzerinden kararlaştırma
+
+mimari kararları koda dökmeden önce arch.md yöntemim var: konuyu adım adım llm ile konuşup son haline getiriyorum, belirsiz kalan yerlerde bana soru sormasını istiyorum, karşılıklı netleştiriyorum. dosya netleşince geriye sadece onu koda dökmek kalıyor.
+
+### 11.09.26 qa boş yanıt veriyordu
 
 belge yüklenip embedlendikten sonra sorulara boş dönüyordu. nedenini uzunca bir süre araştırdım. en son buldum. chroma sqlite dosya tabanlı. web-api ve worker iki ayrı süreç ama aynı dosyaya erişiyor. çözüm için chroma'yı http/single-writer moda aldım.
 
-### create_task'tan ARQ'ya geçiş
-
- 
+### 13.09.26 create_task'tan ARQ'ya geçiş
 
 başta embed işlerini web-api sürecinde `asyncio.create_task` ile koşturuyordum. ancak hatalar izlenemiyordu. restart in-flight işi kesiyordu. yeniden deneme katmanı yoktu. bu yüzden iş yürütmeyi süreç olarak ayırdım ve ayrı bir servis açtım. redis üzerinde arq kuyruğu ve ayrı bir worker süreci oluşturdum. web-api bu sistemde sadece kuyruğa iş atma görevini yapıyor ve gerisine karışmıyor. bu da servisler arası izolasyonu sağlıyor.
 
-### shared sistemi
+### 13.09.26 shared sistemi
 
 en başta bir panel bile kurmak istemedim. ancak sonrasında yönetim için gerektiğini fark ettim. sonrasında kodların çok izole ve atomik olmasını istediğim için worker işlemlerini ayrı bir servise taşıdım. bu güzel bir avantajdı. ancak bir dezavantaj getirdi. kopya dosyalar oluştu. çözüm için shared servisi oluşturup ortak dosyaları buraya aldım.
 
+### 14.09.26 cosine yerine l2 metriğini kullanıyordum
 
+bir süre dense skorlar hep düşük ya da negatif geliyordu, eşik asla geçilmiyordu. her şeyi bm25 taşıyordu. uzun süre eşiklerle uğraştım. sonra koleksiyonun eski kurulumdan kalma l2 uzayıyla oluşturulduğunu fark ettim. chroma bana distance veriyordu. ben de skoru 1 - distance diye hesaplıyordum. l2 skoru karesel uzaklık olduğu için bu negatif çöp üretiyordu. cosine olarak düzeltip yeniden belgeleri embed'ledim ve skorlar gerçek kosinüslere (+0.31…+0.34) oturdu.
 
-&nbsp;
+### Zamanlama
+
+1 gün -&gt; ui
+
+1 gün -&gt; backend altyapısı
+
+2 gün -&gt; basit rag altyapısı, chroma data
+
+1 gün -&gt; promptlar, vision llm eklentisi, optimizasyonlar
+
+1 gün -&gt; test senaryoları
