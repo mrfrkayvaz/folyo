@@ -35,7 +35,7 @@ class Settings(BaseSettings):
 
     retrieve_dense_k: int = 8
     retrieve_bm25_k: int = 8
-    rrf_k: int = 60
+    rrf_k: int = 15
     context_chunks: int = 5
     # Koleksiyon cosine uzayında; ölçülen ilgili-chunk kosinüs dağılımı (BGE-M3, TR kısa sorgu)
     # ~0.30-0.55 bandında. 0.38 çoğu doğru eşleşmeyi eliyordu → 0.30'a kalibre edildi.
