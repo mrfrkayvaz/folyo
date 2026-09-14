@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # Uzaktan chroma server (bağımsız servis — HTTP). Boşsa hata verilir.
     chroma_host: str = ""
     chroma_port: int = 8000
+    chroma_ssl: bool = False
     storage_dir: str = "storage"
 
     chunk_chars: int = 1400

@@ -36,9 +36,11 @@ def _http_client():
             "(ör. CHROMA_HOST=chroma / Coolify iç adresi). Bağımsız chroma servisi çalışmalı."
         )
     port = int(getattr(s, "chroma_port", 8000) or 8000)
+    ssl = bool(getattr(s, "chroma_ssl", False))
     return chromadb.HttpClient(
         host=host,
         port=port,
+        ssl=ssl,
         settings=ChromaSettings(anonymized_telemetry=False),
     )
 
