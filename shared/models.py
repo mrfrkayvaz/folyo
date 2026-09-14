@@ -135,6 +135,33 @@ class DocumentLog(SQLModel, table=True):
     )
 
 
+class QaLog(SQLModel, table=True):
+    """Cevap (QA) üretim günlüğü — her sahne one row; panel 'Loglar' görünümünde okunur.
+
+    Amaç: canlıda 'cevap gelmedi / hata oluştu' durumlarında pipeline'ın hangi
+    aşamada koptuğunu görmek. Tam yanıt/metin SAKLANMAZ — yalnızca olaylar.
+    """
+
+    __tablename__ = "qa_logs"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    workspace_id: uuid.UUID = Field(
+        sa_column=Column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    )
+    message_id: uuid.UUID | None = Field(
+        sa_column=Column(
+            ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=True, index=True
+        )
+    )
+    # info | warning | error
+    level: str = Field(default="info", sa_column=Column(Text, nullable=False))
+    stage: str = Field(default="", sa_column=Column(Text, nullable=False))
+    message: str = Field(default="", sa_column=Column(Text, nullable=False))
+    created_at: datetime = Field(
+        default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False, index=True)
+    )
+
+
 __all__ = [
     "Workspace",
     "Document",
@@ -143,4 +170,5 @@ __all__ = [
     "ChatMessage",
     "User",
     "DocumentLog",
+    "QaLog",
 ]

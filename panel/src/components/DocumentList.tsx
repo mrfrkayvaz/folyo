@@ -16,7 +16,7 @@ export default function DocumentList({ docs, activeDocId, loading, onSelect }: D
       </div>
       <div className="ctx-scroll min-h-0 flex-1 overflow-y-auto p-2">
         {loading && <span className="loading loading-spinner loading-sm m-3 text-base-content/40" />}
-        {!loading && docs?.length === 0 && <p className="p-3 text-xs text-base-content/40">Bu workspace&apos;te doküman yok</p>}
+        {!loading && docs?.length === 0 && <p className="p-3 text-xs text-base-content/40">Bu sohbette doküman yok</p>}
         {!loading &&
           docs?.map((d) => {
             const st = DOC_STATUS_LABELS[d.status] || { label: d.status, cls: "badge-neutral" }

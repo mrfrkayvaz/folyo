@@ -60,6 +60,25 @@ export interface DocumentDetailResponse {
   logs?: DocumentLogItem[]
 }
 
+export interface QaLogItem {
+  id: string
+  workspace_id: string
+  workspace_name?: string
+  message_id?: string | null
+  level: "info" | "warning" | "error"
+  stage: string
+  message: string
+  created_at: string | null
+}
+
+export interface QaLogsResponse {
+  items: QaLogItem[]
+  page: number
+  limit: number
+  total: number
+  pages: number
+}
+
 export interface WorkspaceDetailResponse {
   workspace: PanelWorkspace
   documents: PanelDocument[]

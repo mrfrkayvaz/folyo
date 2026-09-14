@@ -1,4 +1,6 @@
 import json
+import time
+import traceback
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +12,7 @@ from ..core.security import require_auth
 from shared.core.enums import ChatRole
 from shared.core.logging import get_logger
 from shared.models import ChatMessage, Workspace
+from shared.services.qalogs import add_log as qa_log
 from ..schemas.chat import QaBody
 from ..services.rag import qa_events
 
@@ -40,16 +43,19 @@ async def ask(wid: uuid.UUID, body: QaBody):
         if not ws:
             raise HTTPException(404, "Workspace bulunamadı.")
 
-        s.add(ChatMessage(workspace_id=wid, role=ChatRole.user, content=question))
+        user_msg = ChatMessage(workspace_id=wid, role=ChatRole.user, content=question)
+        s.add(user_msg)
         await s.commit()
+        await s.refresh(user_msg)
 
     async def gen():
         sf = get_factory()
         acc = ""
         err = None
         meta = None
+        start = time.monotonic()
         try:
-            async for ev in qa_events(wid, question):
+            async for ev in qa_events(wid, question, message_id=user_msg.id):
                 yield _sse(ev["type"], {k: v for k, v in ev.items() if k != "type"})
                 if ev["type"] == "delta":
                     acc += ev["text"]
@@ -60,6 +66,27 @@ async def ask(wid: uuid.UUID, body: QaBody):
                     LOG.warning("QA error event (wid=%s): %s", wid, err)
 
             content = acc if acc else (f"⚠️ {err}" if err else ERROR_QA_GENERIC_FAILURE)
+            if not acc and not err:
+                # Canlıdaki 'cevap gelmedi' durumu: akış boş bitti, hata event'i yok.
+                await qa_log(
+                    get_factory, workspace_id=wid, message_id=user_msg.id,
+                    level="error", stage="sonuç",
+                    message=f"BOŞ CEVAP: pipeline hata üretmeden boş döndü — istemci 'uyarı' mesajı aldı "
+                    f"({ERROR_QA_GENERIC_FAILURE})",
+                )
+            elif err:
+                await qa_log(
+                    get_factory, workspace_id=wid, message_id=user_msg.id,
+                    level="error", stage="sonuç",
+                    message=f"Yanıt hata olarak kaydedildi: {err}",
+                )
+            else:
+                dur = time.monotonic() - start
+                await qa_log(
+                    get_factory, workspace_id=wid, message_id=user_msg.id,
+                    stage="sonuç",
+                    message=f"Yanıt kaydedildi, süre {dur:.1f}s, uzunluk {len(acc)} karakter",
+                )
             citations = None
             if meta:
                 citations = {
@@ -82,6 +109,14 @@ async def ask(wid: uuid.UUID, body: QaBody):
                 await s.commit()
         except Exception:
             LOG.exception("QA akışı başarısız (wid=%s, soru=%r)", wid, question)
+            try:
+                await qa_log(
+                    get_factory, workspace_id=wid, message_id=user_msg.id,
+                    level="error", stage="akış",
+                    message=f"Akışta beklenmeyen hata: {traceback.format_exc(limit=5)}",
+                )
+            except Exception:
+                LOG.exception("[qalogs] akış hatası loglanamadı (wid=%s)", wid)
             try:
                 async with sf() as s:
                     s.add(

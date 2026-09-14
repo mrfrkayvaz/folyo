@@ -7,7 +7,7 @@
  * Auth: store'daki token her isteğe `Authorization: Bearer` olarak eklenir;
  * 401 alınınca oturum temizlenir (App giriş ekranına döner).
  */
-import type { DocumentDetailResponse, PanelWorkspace, WorkspaceDetailResponse } from "@/types/models"
+import type { DocumentDetailResponse, PanelWorkspace, QaLogsResponse, WorkspaceDetailResponse } from "@/types/models"
 import { useAuth } from "@/store/auth"
 
 const API_BASE: string = String(import.meta.env.VITE_API_BASE_URL || "")
@@ -66,3 +66,19 @@ export const authMe = () => jfetch<{ username: string; user_type: string }>("/au
 export const listWorkspaces = () => jfetch<WorkspacesResponse>("/workspaces")
 export const getWorkspace = (id: string) => jfetch<WorkspaceDetailResponse>(`/workspaces/${id}`)
 export const getDocument = (id: string) => jfetch<DocumentDetailResponse>(`/documents/${id}`)
+
+interface QaLogsParams {
+  page?: number
+  limit?: number
+  workspaceId?: string
+  level?: string
+}
+
+export const listQaLogs = (params: QaLogsParams = {}): Promise<QaLogsResponse> => {
+  const qs = new URLSearchParams()
+  if (params.page !== undefined) qs.set("page", String(params.page))
+  if (params.limit !== undefined) qs.set("limit", String(params.limit))
+  if (params.workspaceId) qs.set("workspace_id", params.workspaceId)
+  if (params.level) qs.set("level", params.level)
+  return jfetch<QaLogsResponse>(`/qa-logs?${qs.toString()}`)
+}

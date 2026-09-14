@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react"
+import { Route, Routes } from "react-router-dom"
+import IconRail from "@/components/IconRail"
+import QaLogsView from "@/components/QaLogsView"
 import WorkspaceList from "@/components/WorkspaceList"
 import DocumentList from "@/components/DocumentList"
 import DocumentDetail from "@/components/DocumentDetail"
@@ -10,7 +13,6 @@ import type { PanelWorkspace, PanelDocument, DocumentDetailResponse } from "@/ty
 export default function App() {
   const token = useAuth((s) => s.token)
   const username = useAuth((s) => s.username)
-  const logout = useAuth((s) => s.logout)
   const [workspaces, setWorkspaces] = useState<PanelWorkspace[]>([])
   const [activeWsId, setActiveWsId] = useState<string | null>(null)
   const [workspaceData, setWorkspaceData] = useState<Awaited<ReturnType<typeof getWorkspace>> | null>(null)
@@ -67,25 +69,26 @@ export default function App() {
 
   return (
     <div className="flex h-dvh bg-base-100 text-base-content">
-      <button
-        type="button"
-        onClick={logout}
-        title="Çıkış yap"
-        className="btn btn-ghost btn-sm fixed right-3 top-3 z-50 gap-1.5 text-base-content/60 hover:text-base-content"
-      >
-        <span className="max-w-32 truncate text-xs">{username}</span>
-        <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
-      </button>
-      <WorkspaceList workspaces={workspaces} activeId={activeWsId} onSelect={(id) => void selectWorkspace(id)} />
-      <DocumentList
-        docs={workspaceData?.documents ?? null}
-        activeDocId={activeDocId}
-        loading={loadingWs}
-        onSelect={(id) => void selectDocument(id)}
-      />
-      <DocumentDetail data={detail} loading={loadingDoc} />
+      <IconRail />
+      <Routes>
+        <Route path="/logs" element={<QaLogsView />} />
+        {/* Anasayfa: sohbetler (workspace → doküman → detay) */}
+        <Route
+          path="*"
+          element={
+            <>
+              <WorkspaceList workspaces={workspaces} activeId={activeWsId} onSelect={(id) => void selectWorkspace(id)} />
+              <DocumentList
+                docs={workspaceData?.documents ?? null}
+                activeDocId={activeDocId}
+                loading={loadingWs}
+                onSelect={(id) => void selectDocument(id)}
+              />
+              <DocumentDetail data={detail} loading={loadingDoc} />
+            </>
+          }
+        />
+      </Routes>
     </div>
   )
 }

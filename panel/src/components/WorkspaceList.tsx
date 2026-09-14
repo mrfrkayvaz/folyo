@@ -10,10 +10,10 @@ export default function WorkspaceList({ workspaces, activeId, onSelect }: Worksp
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-base-300/40">
       <div className="flex h-14 shrink-0 items-center px-4 text-base font-semibold">
-        Workspace&apos;ler
+        Sohbetler
       </div>
       <div className="ctx-scroll min-h-0 flex-1 overflow-y-auto p-2">
-        {workspaces.length === 0 && <p className="p-3 text-xs text-base-content/40">Henüz workspace yok</p>}
+        {workspaces.length === 0 && <p className="p-3 text-xs text-base-content/40">Henüz sohbet yok</p>}
         {workspaces.map((w) => (
           <button
             key={w.id}
