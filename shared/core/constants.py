@@ -14,6 +14,14 @@ ERROR_EMBED_IN_PROGRESS = "Belgeler hâlâ dizinleniyor; tamamlanınca tekrar so
 
 ERROR_NO_SIMILAR_CONTEXT = "Yüklenen belgelerde sorunuzla yeterli benzerlikte bilgi bulunamadı."
 
+# Chroma sorgusu (retry + exact fallback tükendikten sonra) başarısız olduğunda
+# hard-error akışı kesmesin: soft-reject mesajı. Retry/fallback chroma_store içinde
+# korunur; bu yalnızca NİHAİ başarısızlıkta kullanıcıya anlamlı geri dönüş verir.
+ERROR_RETRIEVAL_FAILED = (
+    "Arama altyapısı şu anda yanıt veremiyor (başka bir dizinleme işlemi çakışmış olabilir). "
+    "Kısa süre sonra tekrar deneyin."
+)
+
 ERROR_QA_GENERIC_FAILURE = "Yanıt alınırken bir hata oluştu."
 
 # panel-api chunks.py (Chroma okuma) kullanır

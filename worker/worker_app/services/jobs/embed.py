@@ -5,6 +5,8 @@ Bu görev ARQ worker'ında (ayrı süreç) çalışır; web-api yalnızca kuyru�
 
 import uuid
 
+from sqlmodel import select
+
 from shared.core import fs as core_fs
 from ...core.config import get_settings
 from ...core.database import get_factory
@@ -14,7 +16,12 @@ from shared.core.taskq import enqueue as taskq_enqueue
 from shared.models import Document, EmbeddingJob
 from shared.services import bm25_index, chroma_codec, chroma_store, embeddings
 from .. import ingest
-from shared.services.jobs.cancel import EmbeddingCancelled, clear as clear_cancel, is_cancelled
+from shared.services.jobs.cancel import (
+    EmbeddingCancelled,
+    clear as clear_cancel,
+    is_cancelled,
+    request_cancel,
+)
 from shared.services.doclogs import add_log as add_doc_log
 from shared.services.paths import storage_dir
 from .stats import compute_stats
@@ -45,6 +52,45 @@ async def run_embed_job(workspace_id: uuid.UUID, document_id: uuid.UUID, filenam
             job.updated_at = job.updated_at.__class__.now()
             s.add(job)
             await s.commit()
+
+        # Tek-workspace embed disiplini: bu iş başlayınca, diğer workspace'lerdeki
+        # çalışan/bekleyen embed işleri iptal edilir. Amaç: aynı anda yalnızca tek
+        # workspace chroma'ya yazsın — eşzamanlı yazım/okuma yarışı 'Error finding id'
+        # üreten segment tutarsızlığına yol açıyordu. İptal, arq süreci içindeki
+        # asyncio.Event üzerinden iletilir; çalışan iş bir sonraki batch arasında
+        # is_cancelled kontrolünde durur (EmbeddingCancelled yolu: vektör+dosya temizliği).
+        try:
+            async with sf() as s:
+                rivals = (
+                    await s.execute(
+                        select(Document.id, Document.workspace_id)
+                        .join(EmbeddingJob, EmbeddingJob.document_id == Document.id)
+                        .where(Document.workspace_id != workspace_id)
+                        .where(
+                            (EmbeddingJob.status == EmbeddingStatus.pending)
+                            | (EmbeddingJob.status == EmbeddingStatus.running)
+                        )
+                    )
+                ).all()
+        except Exception as exc:
+            LOG.warning("[embed] rakip workspace taraması başarısız (%s) — disiplin korumasız", exc)
+            rivals = []
+        for rival_doc_id, rival_ws_id in rivals:
+            request_cancel(str(rival_doc_id))
+            await add_doc_log(
+                get_factory, workspace_id=rival_ws_id, document_id=rival_doc_id,
+                level="warning", scope="süreç",
+                message=(
+                    "Başka workspace'te embed başladığı için iptal edildi "
+                    "(tek-workspace embed disiplini)"
+                ),
+            )
+        if rivals:
+            LOG.warning(
+                "[embed] tek-workspace disiplini: %d rakip embed iptal edildi (yeni aktör ws=%s)",
+                len(rivals),
+                workspace_id,
+            )
 
         await add_doc_log(
             get_factory, workspace_id=workspace_id, document_id=document_id,

@@ -10,9 +10,10 @@ from shared.core.constants import (
     ERROR_EMBED_IN_PROGRESS,
     ERROR_NO_EMBEDDED_DOCS,
     ERROR_NO_SIMILAR_CONTEXT,
+    ERROR_RETRIEVAL_FAILED,
 )
 from shared.core.enums import DocumentStatus, EmbeddingStatus
-from shared.models import Document, EmbeddingJob
+from shared.models import EmbeddingJob
 from shared.services import bm25_index, chroma_store, embeddings, llm
 from shared.services.qalogs import add_log as qa_log
 from .retrieval import (
@@ -30,15 +31,41 @@ async def qa_events(workspace_id, question: str, message_id=None):
     async def log(stage: str, level: str, msg: str) -> None:
         await qa_log(get_factory, workspace_id=workspace_id, message_id=message_id, level=level, stage=stage, message=msg)
 
+    def _retrieval_reject(exc: Exception) -> dict:
+        """Chroma okuma hatası → guard-reddi ile aynı şekilli 'rejected' meta.
+
+        Frontend bunu standart kesilme kartıyla gösterir; error event'i gerçek nedeni
+        ayrıca iletir ('yetersiz' rozeti tek başına yanıltıcı olmasın diye).
+        """
+        return {
+            "type": "meta",
+            "sources": [],
+            "chunk_ids": [],
+            "confidence": 0.0,
+            "confidence_level": "yetersiz",
+            "rejected": True,
+            "signals": {
+                "dense": 0.0,
+                "bm25": 0.0,
+                "dense_min": settings.guard_dense_min,
+                "bm25_min": settings.guard_bm25_min,
+                "retrieval_error": str(exc),
+            },
+        }
+
+    def _retrieval_error(exc: Exception) -> dict:
+        """Soft-reject error event'i — kullanıcı kesilmenin GERÇEK nedenini görsün."""
+        return {"type": "error", "message": f"{ERROR_RETRIEVAL_FAILED} ({type(exc).__name__})"}
+
     # Aktif embed yazımı sürüyorken soru sorulursa chroma'ya okuma atma — multi-process
     # yarışı 'Error finding id' üretir ve akış boş kalır. Bir süre bekletip kibarca bilgilendir.
+    # Koruma kapsamı: TÜM workspace'ler (tek chroma collection'da segmentler paylaşılır —
+    # başka workspace yazarken de aynı segment dosyalarına yazılır).
     try:
         async with sf() as s:
             busy = (
                 await s.execute(
                     select(EmbeddingJob.id)
-                    .join(Document, Document.id == EmbeddingJob.document_id)
-                    .where(Document.workspace_id == workspace_id)
                     .where(
                         (EmbeddingJob.status == EmbeddingStatus.pending)
                         | (EmbeddingJob.status == EmbeddingStatus.running)
@@ -50,7 +77,7 @@ async def qa_events(workspace_id, question: str, message_id=None):
         busy = None  # DB erişimi başarısızsa normal akışı dene (race koruması devre dışı)
 
     if busy is not None:
-        await log("bekleme", "warning", "Aktif embed sürüyor — soru bekletildi")
+        await log("bekleme", "warning", "Bir workspace'te aktif embed sürüyor — soru bekletildi")
         yield {"type": "error", "message": ERROR_EMBED_IN_PROGRESS}
         return
 
@@ -63,13 +90,25 @@ async def qa_events(workspace_id, question: str, message_id=None):
         yield {"type": "error", "message": f"Embedding hatası: {exc}"}
         return
 
-    index, ws_chunks = await bm25_index.get_index(workspace_id)
+    try:
+        index, ws_chunks = await bm25_index.get_index(workspace_id)
+    except Exception as exc:
+        await log("retrieval", "error", f"Chroma okuma başarısız (index): {exc}")
+        yield _retrieval_reject(exc)
+        yield _retrieval_error(exc)
+        return
     if not ws_chunks:
         await log("retrieval", "warning", "Embedlenmiş belge yok")
         yield {"type": "error", "message": ERROR_NO_EMBEDDED_DOCS}
         return
 
-    dense_hits = await chroma_store.query(workspace_id, qvec, settings.retrieve_dense_k)
+    try:
+        dense_hits = await chroma_store.query(workspace_id, qvec, settings.retrieve_dense_k)
+    except Exception as exc:
+        await log("retrieval", "error", f"Chroma sorgusu başarısız: {exc}")
+        yield _retrieval_reject(exc)
+        yield _retrieval_error(exc)
+        return
 
     bm25_hits: list[dict] = []
     bm25_scores: list[float] = []
