@@ -21,6 +21,8 @@ SYSTEM_PROMPT = (
     "4. Cite inline wherever the information appears: [BelgeAdı, sayfa N, parça M]; take the page\n"
     "   and chunk numbers verbatim from the context labels. Do NOT collect sources into a list at\n"
     "   the end — each citation must sit right next to the information it supports.\n"
+    "   Never merge multiple citations into a single bracket; write each as its own\n"
+    "   [Document, page N, chunk M].\n"
     "5. LANGUAGE MATCHING: answer in the SAME language as the question.\n"
     "   Supported languages: English and Turkish only. If the question is in any other language,\n"
     "   do NOT answer the question — politely reply (in English or Turkish) asking the user to ask\n"
@@ -35,7 +37,9 @@ SYSTEM_PROMPT = (
     "   ONE source: pick one, use the placeholder exactly ONCE, and never at the end of the answer.\n"
     "8. Sources WITHOUT a `görsel:` field (text, equations) get a normal inline citation next to\n"
     "   each use: [BelgeAdı, sayfa N, parça M]. Such sources may be cited repeatedly; still, never\n"
-    "   collect sources at the end."
+    "   collect sources at the end.\n"
+    "9. Image placeholders ([Görsel: ...]) stand alone on their OWN line — never inside\n"
+    "   a citation bracket, and never joined with ';' to other sources."
 )
 
 # Vision LLM prompt'ları — OCR yetersiz kaldığında (görsel içeriğini metne dönüştürür).

@@ -35,6 +35,11 @@ const GORSEL_RE = /\[(?:Görsel|Image):\s*([^\]]+?)\s*\]/i
 const CITATION_RE =
   /^\[\s*(.+?)\s*,\s*(?:(?:sayfa|page)\s*(\d+)\s*,\s*)?(?:parça(?:lar)?|chunk(?:s)?)\s*([^\]]+?)\s*\]$/i
 
+// Bileşik parantez içindeki segmentler (tek köşeli parantez, ';' ile ayrılmış çoklu künye)
+const SEG_CITATION_RE =
+  /^(.+?)\s*,\s*(?:(?:sayfa|page)\s*(\d+)\s*,\s*)?(?:parça(?:lar)?|chunk(?:s)?)\s*([^\]]+)$/i
+const SEG_IMAGE_RE = /^(?:Görsel|Image)\s*:\s*([^\]]+)$/i
+
 // Satır içi tokenleri (öncelik sırasıyla: matematik → görsel → atıf → kalın → kod → italik).
 const INLINE_TOKEN =
   /(\$\$[\s\S]+?\$\$|\$[^\s$][^$\n]*?[^\s$]\$|\[(?:Görsel|Image):[^\]]*\]|\[[^\]]*(?:parça|chunk)[^\]]*\]|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/gi
@@ -46,35 +51,72 @@ function isMathText(tex: string): boolean {
   return MATH_HINT.test(tex)
 }
 
+const PREFIX_STRIP = /^(?:belge|kaynak|document|source)\s*:\s*/i
+
+/** Atıf düğümü kurar — görünür etiket "Kaynak: …", model ön ekleri kırpılır. */
+function makeCitation(m: RegExpMatchArray, inner: string): InlineNode {
+  const innerClean = inner.replace(PREFIX_STRIP, "").trim()
+  const filename = m[1].trim().replace(PREFIX_STRIP, "")
+  const pageNumber = m[2] ? parseInt(m[2], 10) : null
+  const firstNumMatch = m[3].match(/\d+/)
+  const chunkIndex = firstNumMatch ? parseInt(firstNumMatch[0], 10) : 1
+  return { kind: "citation", label: `Kaynak: ${innerClean}`, filename, pageNumber, chunkIndex }
+}
+
+/**
+ * Tek köşeli parantez içinde ';' ile birleşmiş çoklu künyeyi parça parça çözer:
+ * her künye ayrı atıf, `[Görsel: …]` segmenti ayrı görsel düğümü olur.
+ * Bileşik değilse null döner (normal tek-künye yolu devam eder).
+ */
+function parseCompositeBracket(raw: string): InlineNode[] | null {
+  if (!(raw.startsWith("[") && raw.endsWith("]") && raw.includes(";"))) return null
+  const parts = raw
+    .slice(1, -1)
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (parts.length < 2) return null
+  const out: InlineNode[] = []
+  for (const part of parts) {
+    const im = part.match(SEG_IMAGE_RE)
+    if (im) {
+      out.push({ kind: "image", path: im[1].trim() })
+      continue
+    }
+    const cm = part.match(SEG_CITATION_RE)
+    if (cm) {
+      out.push(makeCitation(cm, part))
+      continue
+    }
+    out.push({ kind: "text", text: part })
+  }
+  return out
+}
+
 export function parseInline(text = ""): InlineNode[] {
-  const nodes = text.split(INLINE_TOKEN).filter(Boolean).map((p): InlineNode => {
+  const nodes = text.split(INLINE_TOKEN).filter(Boolean).flatMap((p): InlineNode[] => {
     if (p.startsWith("$$") && p.endsWith("$$") && p.length > 4) {
-      return { kind: "math", tex: p.slice(2, -2).trim(), display: true }
+      return [{ kind: "math", tex: p.slice(2, -2).trim(), display: true }]
     }
     const inlineMath = p.match(MATH_INLINE_RE)
     if (inlineMath && isMathText(inlineMath[1])) {
-      return { kind: "math", tex: inlineMath[1].trim(), display: false }
+      return [{ kind: "math", tex: inlineMath[1].trim(), display: false }]
     }
     const im = p.match(GORSEL_RE)
-    if (im) return { kind: "image", path: im[1].trim() }
+    if (im) return [{ kind: "image", path: im[1].trim() }]
+
+    const composite = parseCompositeBracket(p)
+    if (composite) return composite
 
     const m = p.match(CITATION_RE)
-    if (m) {
-      // Görünür etiket her zaman "Source: …" — modelin "Belge/Kaynak/Document/Source:" ön ekleri kırpılır.
-      const inner = p.slice(1, -1).trim().replace(/^(?:belge|kaynak|document|source)\s*:\s*/i, "")
-      const filename = m[1].trim().replace(/^(?:belge|kaynak|document|source)\s*:\s*/i, "")
-      const pageNumber = m[2] ? parseInt(m[2], 10) : null
-      const firstNumMatch = m[3].match(/\d+/)
-      const chunkIndex = firstNumMatch ? parseInt(firstNumMatch[0], 10) : 1
-      return { kind: "citation", label: `Kaynak: ${inner}`, filename, pageNumber, chunkIndex }
-    }
+    if (m) return [makeCitation(m, p.slice(1, -1).trim())]
     if (p.startsWith("**") && p.endsWith("**") && p.length > 4)
-      return { kind: "strong", children: parseInline(p.slice(2, -2)) }
+      return [{ kind: "strong", children: parseInline(p.slice(2, -2)) }]
     if (p.startsWith("`") && p.endsWith("`") && p.length > 2)
-      return { kind: "code", text: p.slice(1, -1) }
+      return [{ kind: "code", text: p.slice(1, -1) }]
     if (p.startsWith("*") && p.endsWith("*") && p.length > 2)
-      return { kind: "em", children: parseInline(p.slice(1, -1)) }
-    return { kind: "text", text: p }
+      return [{ kind: "em", children: parseInline(p.slice(1, -1)) }]
+    return [{ kind: "text", text: p }]
   })
 
   // "Kaynak: [X]" / "Belge: [X]" gibi DIŞ ön ekleri kırp (rozet zaten "Kaynak:" ile başlar).
