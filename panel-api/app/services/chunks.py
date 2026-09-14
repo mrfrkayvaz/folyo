@@ -10,10 +10,20 @@ _client = None
 
 
 def _collection():
+    """Chroma HTTP istemcisi — veri, bağımsız chroma servisinde (/data)."""
     global _client
     if _client is None:
-        _client = chromadb.PersistentClient(
-            path=get_settings().chroma_dir,
+        s = get_settings()
+        host = (getattr(s, "chroma_host", "") or "").strip()
+        if not host:
+            raise RuntimeError(
+                "Chroma server adresi tanımlı değil: 'CHROMA_HOST' env'i zorunlu "
+                "(bağımsız chroma servisi çalışmalı)."
+            )
+        _client = chromadb.HttpClient(
+            host=host,
+            port=int(getattr(s, "chroma_port", 8000) or 8000),
+            ssl=bool(getattr(s, "chroma_ssl", False)),
             settings=ChromaSettings(anonymized_telemetry=False),
         )
     return _client.get_or_create_collection(COLLECTION_NAME)
