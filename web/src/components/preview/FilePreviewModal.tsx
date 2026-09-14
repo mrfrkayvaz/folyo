@@ -1,5 +1,6 @@
 import { useEffect } from "react"
 import { DocIcon, XIcon } from "../icons"
+import Popup from "../Popup"
 import { formatBytes } from "../../utils/formatters"
 import { useFilePreview } from "../../hooks/useFilePreview"
 import FileViewer from "./FileViewer"
@@ -13,21 +14,15 @@ interface FilePreviewModalProps {
 export default function FilePreviewModal({ attachment, onClose }: FilePreviewModalProps) {
   const preview = useFilePreview(attachment)
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && attachment) onClose()
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [attachment, onClose])
-
   if (!attachment) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-xs transition-opacity animate-in fade-in duration-150 sm:p-6">
-      <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
-
-      <div className="relative z-10 flex min-h-[300px] max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl">
+    <Popup
+      onClose={onClose}
+      className="flex min-h-[300px] max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl"
+    >
+      {(close) => (
+        <>
         <div className="flex items-center justify-between border-b border-base-200 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5 pr-4">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -48,7 +43,7 @@ export default function FilePreviewModal({ attachment, onClose }: FilePreviewMod
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={close}
             className="btn btn-circle btn-ghost btn-sm text-base-content/60 hover:text-base-content"
             title="Kapat"
             aria-label="Kapat"
@@ -70,7 +65,8 @@ export default function FilePreviewModal({ attachment, onClose }: FilePreviewMod
             targetPage={preview.targetPage}
           />
         </div>
-      </div>
-    </div>
+        </>
+      )}
+      </Popup>
   )
 }

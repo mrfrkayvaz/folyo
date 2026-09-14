@@ -33,7 +33,7 @@ export default function FileViewer({
   if (error) {
     return (
       <div className="flex min-h-[300px] flex-col items-center justify-center gap-2 p-4 text-center text-error sm:p-6">
-        <p className="text-sm font-medium">⚠️ {error}</p>
+        <p className="text-sm font-medium">{error}</p>
       </div>
     )
   }

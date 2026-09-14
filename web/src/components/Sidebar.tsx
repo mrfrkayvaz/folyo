@@ -8,11 +8,35 @@ interface SidebarProps {
   onSelect: (id: string) => void
   onNew: () => void
   onDelete: (id: string) => void
+  /** Mobil drawera açık mı (masaüstünde önemsenmez). */
+  open?: boolean
+  onClose?: () => void
 }
 
-export default function Sidebar({ workspaces, activeId, onSelect, onNew, onDelete }: SidebarProps) {
+export default function Sidebar({
+  workspaces,
+  activeId,
+  onSelect,
+  onNew,
+  onDelete,
+  open = false,
+  onClose,
+}: SidebarProps) {
   return (
-    <aside className="flex w-52 shrink-0 flex-col border-r border-base-300/40 md:w-64">
+    <>
+      {/* Mobil karartma arka planı — masaüstünde yok */}
+      {open && onClose && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-base-300/40 bg-base-100 transition-transform duration-200 md:static md:translate-x-0 md:shadow-none ${
+          open ? "translate-x-0 shadow-2xl" : "-translate-x-full"
+        }`}
+      >
       <div className="flex items-center gap-2 px-3 pb-2 pt-3">
         <img src="/logo.svg" alt="Folyo" className="h-9 w-9 shrink-0 rounded-lg drop-shadow" />
         <span className="truncate text-lg font-semibold tracking-tight">Folyo</span>
@@ -73,6 +97,7 @@ export default function Sidebar({ workspaces, activeId, onSelect, onNew, onDelet
           </a>
         ))}
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

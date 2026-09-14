@@ -20,20 +20,20 @@ export default function FileBar({ attachments, onRemove, onPreview }: FileBarPro
           <div
             key={a.key}
             onClick={() => onPreview?.(a)}
-            className={`inline-flex cursor-pointer select-none shrink-0 items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition hover:border-primary/50 hover:bg-base-200 ${
+            className={`inline-flex cursor-pointer select-none max-w-[300px] shrink-0 items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition hover:border-primary/50 hover:bg-base-200 ${
               err ? "border-error/40 bg-error/5" : "border-base-300 bg-base-200/70"
             }`}
             title="Önizlemek için tıklayın"
           >
             <DocIcon className={`h-4 w-4 shrink-0 ${err ? "text-error" : "text-primary"}`} />
             <span className="flex min-w-0 flex-col">
-              <span className="max-w-44 truncate font-medium text-base-content/90">
+              <span className="min-w-0 flex-1 truncate font-medium text-base-content/90">
                 {a.filename || a.file?.name}
-                <span className="ml-1.5 text-[10px] font-normal text-base-content/40">
-                  {formatBytes(a.size ?? a.file?.size)}
-                </span>
               </span>
-              <span className="flex items-center gap-1 text-[11px] text-base-content/50">
+              <span className="flex items-center gap-1.5 text-[11px] text-base-content/50">
+                {formatBytes(a.size ?? a.file?.size) && (
+                  <span className="shrink-0 text-base-content/40">{formatBytes(a.size ?? a.file?.size)}</span>
+                )}
                 {a.phase === "queued" && <span>sırada…</span>}
                 {(a.phase === DocumentStatus.UPLOADING || a.phase === DocumentStatus.EMBEDDING) && (
                   <>
@@ -41,7 +41,7 @@ export default function FileBar({ attachments, onRemove, onPreview }: FileBarPro
                     <span>{a.phase === DocumentStatus.UPLOADING ? "yükleniyor…" : "taranıyor…"}</span>
                   </>
                 )}
-                {a.phase === DocumentStatus.EMBEDDED && <span className="text-success">✓ işlendi</span>}
+                {a.phase === DocumentStatus.EMBEDDED && <span className="text-success">işlendi</span>}
                 {err && <span className="text-error">{a.error || "işlenemedi"}</span>}
                 {a.phase === DocumentStatus.CANCELLED && <span className="text-base-content/45">iptal</span>}
               </span>

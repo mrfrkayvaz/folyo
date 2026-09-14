@@ -134,6 +134,16 @@ async def qa_events(workspace_id, question: str, message_id=None):
     )
     srcs = sources(hits)
     ids = [f"{h['doc_id']}:{h['chunk_index']}" for h in hits]
+    # Chunk başına sinyaller: dense (vektör kosinüs skoru) + bm25 — popupta per-chunk gösterim
+    dense_by_key = {(h["doc_id"], h["chunk_index"]): h.get("score", 0.0) for h in dense_hits}
+    chunk_scores = [
+        {
+            "id": f"{h['doc_id']}:{h['chunk_index']}",
+            "dense": round(float(dense_by_key.get((h["doc_id"], h["chunk_index"]), 0.0)), 3),
+            "bm25": round(float(bm25_by_key.get((h["doc_id"], h["chunk_index"]), 0.0)), 3),
+        }
+        for h in hits
+    ]
     await log(
         "bağlam", "info",
         f"Bağlam: {len(ids)} chunk seçildi, belge={len({h['doc_id'] for h in hits})}, "
@@ -144,6 +154,7 @@ async def qa_events(workspace_id, question: str, message_id=None):
         "type": "meta",
         "sources": srcs,
         "chunk_ids": ids,
+        "chunk_scores": chunk_scores,
         "confidence": conf,
         "confidence_level": level,
         "rejected": False,
@@ -186,4 +197,4 @@ async def qa_events(workspace_id, question: str, message_id=None):
                 await log("llm_sonuç", "info", f"LLM akışı tamam: {delta_count} delta")
             break
     await task
-    yield {"type": "done", "sources": srcs, "chunk_ids": ids, "confidence": conf, "confidence_level": level}
+    yield {"type": "done", "sources": srcs, "chunk_ids": ids, "chunk_scores": chunk_scores, "confidence": conf, "confidence_level": level}

@@ -104,7 +104,7 @@ export function useChatMessages() {
         } else if (event === SSE_EVENTS.ERROR) {
           setMsg(qaId, (m) => ({
             ...m,
-            text: `⚠️ ${(data as { message: string }).message}`,
+            text: `Hata: ${(data as { message: string }).message}`,
             streaming: false,
             rejected: meta?.rejected ?? false,
             confidence: meta?.confidence,
@@ -119,7 +119,7 @@ export function useChatMessages() {
         await askQAAction(wid, q, { onEvent })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        setMsg(qaId, (m) => ({ ...m, text: `⚠️ Bağlantı hatası: ${msg}`, streaming: false }))
+        setMsg(qaId, (m) => ({ ...m, text: `Bağlantı hatası: ${msg}`, streaming: false }))
       }
       useWorkspacesStore.getState().hydrate()
     },

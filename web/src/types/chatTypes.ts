@@ -14,9 +14,16 @@ export interface SignalMeta {
   bm25_min: number
 }
 
+export interface ChunkScore {
+  id: string
+  dense: number
+  bm25: number
+}
+
 export interface ChatCitations {
   sources: CitationSource[]
   chunk_ids: string[]
+  chunk_scores?: ChunkScore[]
   confidence?: number | null
   confidence_level?: ConfidenceLevel | null
   rejected?: boolean
@@ -46,6 +53,7 @@ export interface ChatMessageItem {
   confidenceLevel?: ConfidenceLevel | null
   rejected?: boolean
   signals?: SignalMeta | null
+  chunkScores?: ChunkScore[]
 }
 
 export type QaEventName = "delta" | "meta" | "error" | "done"

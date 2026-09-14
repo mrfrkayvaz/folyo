@@ -39,6 +39,7 @@ export function mapApiMessage(m: ApiMessage): ChatMessageItem {
     confidenceLevel: (cit?.confidence_level as ConfidenceLevel | undefined) ?? undefined,
     rejected: cit?.rejected ?? undefined,
     signals: cit?.signals ?? undefined,
+    chunkScores: cit?.chunk_scores ?? undefined,
   }
 }
 

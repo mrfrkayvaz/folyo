@@ -65,7 +65,7 @@ async def ask(wid: uuid.UUID, body: QaBody):
                     err = ev.get("message") or err
                     LOG.warning("QA error event (wid=%s): %s", wid, err)
 
-            content = acc if acc else (f"⚠️ {err}" if err else ERROR_QA_GENERIC_FAILURE)
+            content = acc if acc else (f"Hata: {err}" if err else ERROR_QA_GENERIC_FAILURE)
             if not acc and not err:
                 # Canlıdaki 'cevap gelmedi' durumu: akış boş bitti, hata event'i yok.
                 await qa_log(
@@ -92,6 +92,7 @@ async def ask(wid: uuid.UUID, body: QaBody):
                 citations = {
                     "sources": meta.get("sources") or [],
                     "chunk_ids": meta.get("chunk_ids") or [],
+                    "chunk_scores": meta.get("chunk_scores"),
                     "confidence": meta.get("confidence"),
                     "confidence_level": meta.get("confidence_level"),
                     "rejected": bool(meta.get("rejected")),

@@ -29,16 +29,17 @@ export default function AssistantMessage({ m, onCitationClick }: AssistantMessag
             <ShieldIcon className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
             <div>
               <p className="text-sm font-medium text-warning">Belgelerde doğrulanabilir bilgi bulunamadı</p>
-              <p className="mt-1 text-xs leading-5 text-base-content/70">{m.text.replace(/^⚠️\s*/, "")}</p>
+              <p className="mt-1 text-xs leading-5 text-base-content/70">{m.text.replace(/^[\u26A0\uFE0F\s]*/, "")}</p>
             </div>
           </div>
         ) : (
           <>
             <RichText text={m.text} onCitationClick={onCitationClick} />
             {m.streaming && (
-              <span className="ml-0.5 inline-block animate-pulse text-base-content/50" aria-hidden="true">
-                ▍
-              </span>
+              <span
+                className="ml-0.5 inline-block h-4 w-0.5 animate-pulse rounded-sm bg-base-content/50 align-text-bottom"
+                aria-hidden="true"
+              />
             )}
           </>
         )}

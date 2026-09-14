@@ -1,18 +1,30 @@
-import { ArrowLeftIcon, MoonIcon, SunIcon } from "./icons"
+import { ArrowLeftIcon, MenuIcon, MoonIcon, SunIcon } from "./icons"
 import type { ThemeValue } from "../enums/index"
 
 interface HeaderProps {
   theme: ThemeValue
   onToggleTheme: () => void
   onBack?: () => void
+  onMenu?: () => void
   title: string
   onLogout?: () => void
 }
 
-export default function Header({ theme, onToggleTheme, onBack, title, onLogout }: HeaderProps) {
+export default function Header({ theme, onToggleTheme, onBack, onMenu, title, onLogout }: HeaderProps) {
   const dark = theme === "gemdark"
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4">
+      {onMenu && (
+        <button
+          type="button"
+          className="btn btn-circle btn-ghost -ml-1 shrink-0 md:hidden"
+          onClick={onMenu}
+          title="Sohbetler"
+          aria-label="Sohbetler menüsü"
+        >
+          <MenuIcon className="h-5 w-5" />
+        </button>
+      )}
       {onBack && (
         <button
           type="button"

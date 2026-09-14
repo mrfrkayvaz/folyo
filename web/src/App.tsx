@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import ChatMain from "./components/ChatMain"
 import Composer from "./components/Composer"
 import ConfirmModal from "./components/ConfirmModal"
@@ -28,6 +28,8 @@ export default function App() {
 function ChatApp() {
   const s = useAppState()
   const logout = useAuth((s) => s.logout)
+  // Mobilde sidebar drawer olarak açılır (masaüstünde statik, davranış değişmez)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Oturum geri yükleme: stored token'ı sunucuda doğrula (geçersizse çıkış).
   useEffect(() => {
@@ -39,15 +41,24 @@ function ChatApp() {
       <Sidebar
         workspaces={s.ws.workspaces}
         activeId={s.ws.activeWorkspaceId ?? s.ws.activeWorkspace?.id ?? null}
-        onSelect={(id) => void s.openWorkspace(id)}
-        onNew={s.newChat}
+        onSelect={(id) => {
+          setSidebarOpen(false)
+          void s.openWorkspace(id)
+        }}
+        onNew={() => {
+          setSidebarOpen(false)
+          s.newChat()
+        }}
         onDelete={s.promptDeleteWorkspace}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Header
           theme={s.theme}
           onToggleTheme={s.toggle}
+          onMenu={() => setSidebarOpen(true)}
           onBack={s.inWorkspace ? s.newChat : undefined}
           title={s.chatTitle}
           onLogout={logout}
@@ -80,7 +91,7 @@ function ChatApp() {
         />
 
         {s.showComposer && (
-          <footer className="flex justify-center px-4 pb-4 pt-1 sm:px-6">
+          <footer className="flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1 sm:px-6">
             <Composer onSend={s.handleSend} busy={s.chat.busy} />
           </footer>
         )}
