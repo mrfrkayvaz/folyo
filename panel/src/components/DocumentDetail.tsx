@@ -42,10 +42,10 @@ export default function DocumentDetail({ data, loading }: DocumentDetailProps) {
   const job = d.process?.job ?? undefined
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col">
+    <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <DocumentHeader d={d} job={job} />
 
-      <div className="flex flex-1 flex-col px-5 pb-5">
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-5">
         <div role="tablist" className="tabs tabs-border mt-3 w-fit">
           {TABS.map((t) => (
             <button

@@ -9,7 +9,7 @@ interface DocumentHeaderProps {
 export default function DocumentHeader({ d, job }: DocumentHeaderProps) {
   const st = DOC_STATUS_LABELS[d.status] || { label: d.status, cls: "badge-neutral" }
   return (
-    <div className="sticky top-0 z-10 border-b border-base-300/40 bg-base-100 px-5 py-3">
+    <div className="sticky top-0 z-10 shrink-0 border-b border-base-300/40 bg-base-100 px-5 py-3">
       <p className="truncate text-base font-semibold">{d.filename}</p>
       <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-base-content/50">
         <span className={`badge ${st.cls} badge-soft badge-xs`}>{st.label}</span>

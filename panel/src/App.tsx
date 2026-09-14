@@ -68,7 +68,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-dvh bg-base-100 text-base-content">
+    <div className="flex h-dvh overflow-hidden bg-base-100 text-base-content">
       <IconRail />
       <Routes>
         <Route path="/logs" element={<QaLogsView />} />

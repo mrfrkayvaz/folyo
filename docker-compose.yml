@@ -1,21 +1,5 @@
 name: folyo
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Folyo — canlı geliştirme stack'i (brüv modeli)
-# Tüm servisler kaynak kodları bind-mount eder ve dev sunucusu olarak çalışır:
-#   · web      → Vite dev server + HMR (kod kaydet → tarayıcı anında yansır)
-#   · web-api  → uvicorn --reload (kod kaydet → otomatik restart)
-# Statik prod build / volume dansı yoktur.
-#
-# Kullanım:
-#   docker compose up -d --build
-#     → http://localhost:5173  (Vite HMR, /api → vite proxy → web-api)
-#     → http://localhost:8080  (Caddy: aynı arayüz, üstten)
-#   Yeni npm paketi:  docker compose up -d --build web
-#   Yeni pip paketi:  docker compose build web-api
-#   .env değişince:   docker compose up -d --force-recreate web-api
-# ─────────────────────────────────────────────────────────────────────────────
-
 services:
   db:
     image: postgres:16-alpine
@@ -35,7 +19,6 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # Redis — ARQ iş kuyruğu (embed/enrich görev üretimi)
   redis:
     image: redis:7-alpine
     container_name: folyo-redis
@@ -46,25 +29,17 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Vektör DB — bağımsız Chroma server (dosyaları TEK süreç sahiplenir).
-  # İstemciler (web-api/worker/panel) HTTP ile bağlanır → paylaşımlı dosya erişimi
-  # kaynaklı segment bozulmaları ('finding id') ortadan kalkar. Veri /data'dadır —
-  # kalıcıdır, silinebilir değildir (mevcut ./chroma_data devralınır).
   chroma:
     build:
       context: .
       dockerfile: chroma/Dockerfile
     container_name: folyo-chroma
     ports:
-      - "8002:8000"   # doğrudan erişim (debug için)
+      - "8002:8000"
     volumes:
       - ./chroma_data:/data
     restart: unless-stopped
 
-  # Embed worker: bağımsız ARQ servisi — web-api'nin ürettiği embed/enrich işlerini işler.
-  # Kod: worker/worker_app (settings/runners + jobs + ingest/extract/ocr/vision/summary);
-  # ortak katmanı (modeller, core, chroma_store, embeddings...) web-api paketinden (`app.*`)
-  # import eder — kopya yok, tek kaynak.
   web-worker:
     build:
       context: .
@@ -186,7 +161,6 @@ services:
       - panel-api
     restart: unless-stopped
 
-  # Ters proxy (opsiyonel): :8080'den aynı arayüze — /api doğrudan backend'e
   caddy:
     image: caddy:2-alpine
     container_name: folyo-caddy
