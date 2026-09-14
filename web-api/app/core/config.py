@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     database_url: str = ""
     chroma_dir: str = "chroma_data"
+    # Uzaktan chroma server (bağımsız servis — HTTP). Boşsa hata verilir.
+    chroma_host: str = ""
+    chroma_port: int = 8000
     storage_dir: str = "storage"
 
     chunk_chars: int = 1400

@@ -8,6 +8,9 @@ class Settings(BaseSettings):
 
     database_url: str = ""
     chroma_dir: str = "chroma_data"
+    # Uzaktan chroma server (bağımsız servis — HTTP). Boşsa hata verilir.
+    chroma_host: str = ""
+    chroma_port: int = 8000
     # Panel API taşıyıcı (bearer) token imzası — HMAC anahtarı.
     # Prod'da (Coolify) AUTH_SECRET set edilmeli; boşsa dev fallback'i kullanılır.
     auth_secret: str = ""

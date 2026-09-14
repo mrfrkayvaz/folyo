@@ -1,6 +1,10 @@
-"""Chroma sink: doküman ekleme/silme/query — senkron op'lar thread'de, async dış API."""
+"""Chroma sink: doküman ekleme/silme/query — senkron op'lar thread'de, async dış API.
 
-import os
+Uzaktan (server) mod: `CHROMA_HOST`/`CHROMA_PORT` ile bağlanan `HttpClient`.
+Dosyaları yalnızca bağımsız chroma servisi sahiplenir (tek süreç) — çok süreçli
+paylaşımlı dosya erişiminden kaynaklanan segment bozulmaları ('finding id') ortadan kalkar.
+"""
+
 import threading
 import time
 
@@ -21,10 +25,22 @@ _client = None
 _collection = None
 _lock = threading.Lock()
 
-# Sürece özgü 'finding id' bozulması: ardışık bu kadar tam tur başarısız olursa süreç
-# kendini sonlandırır (restart policy taze süreç açarsa bozulma iyileşir).
-_FINDING_ID_SELF_HEAL_ROUNDS = 3
-_finding_id_strikes = 0
+
+def _http_client():
+    """Yeni bir Chroma HTTP istemcisi kurar (server adresi settings'ten)."""
+    s = get_settings()
+    host = (getattr(s, "chroma_host", "") or "").strip()
+    if not host:
+        raise RuntimeError(
+            "Chroma server adresi tanımlı değil: 'CHROMA_HOST' env'i zorunlu "
+            "(ör. CHROMA_HOST=chroma / Coolify iç adresi). Bağımsız chroma servisi çalışmalı."
+        )
+    port = int(getattr(s, "chroma_port", 8000) or 8000)
+    return chromadb.HttpClient(
+        host=host,
+        port=port,
+        settings=ChromaSettings(anonymized_telemetry=False),
+    )
 
 
 def _space_of(collection) -> str | None:
@@ -44,10 +60,7 @@ def _col():
     if _collection is None:
         with _lock:
             if _collection is None:
-                _client = chromadb.PersistentClient(
-                    path=get_settings().chroma_dir,
-                    settings=ChromaSettings(anonymized_telemetry=False),
-                )
+                _client = _http_client()
                 _collection = _client.get_or_create_collection(
                     "documents",
                     metadata={"hnsw:space": "cosine"},
@@ -91,12 +104,10 @@ def _reset_collection_sync():
 
 
 def _reset_client(why: str) -> None:
-    """Chroma istemcisini sıfırlar; bir sonraki erişimde `_col()` taze açar.
+    """Chroma istemcisini sıfırlar; bir sonraki erişimde `_col()` taze bağlantı kurar.
 
-    Multi-process kullanımda (web-api + web-worker aynı `chroma.sqlite3` dosyasına
-    yazar/okur) uzun ayakta kalan bir süreçteki istemci, diğer sürecin yazmasından
-    sonra bayatlayıp hata üretebilir. Hatada istemciyi yeniden açmak sorunu
-    restart beklemeden kendi kendine iyileştirir (koleksiyon/veri silinmez).
+    HTTP istemcisi state'sizdir — sıfırlamak ağ bağlantısını/önbelleği atar; veri
+    sunucuda yaşar, hiçbir dosya işlemi yapılmaz.
     """
     global _client, _collection
     with _lock:
@@ -221,27 +232,8 @@ def _delete_ws_sync(workspace_id: str) -> None:
 
 
 def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
-    # Okuma yolu: embed batch yazımıyla çakışabilir → daha uzun/çok deneme (toplam ~7.5 sn)
-    global _finding_id_strikes
-    try:
-        res = _run_with_reopen_retry(_query_sync_inner, workspace_id, vec, top_k, attempts=5, backoff=0.5)
-    except Exception as exc:
-        if "finding id" in str(exc).lower():
-            # Sürece özgü bozulma imzası: taze süreçte aynı veri çalışıyor, reset'tle iyileşmiyor.
-            # Ardışık tur sayısı eşikteyse süreci sonlandır → container restart policy taze süreç açar.
-            with _lock:
-                _finding_id_strikes += 1
-                if _finding_id_strikes >= _FINDING_ID_SELF_HEAL_ROUNDS:
-                    LOG.critical(
-                        "[chroma] %d ardışık tur 'finding id' — süreç içi Chroma durumu bozuk; "
-                        "kendini iyileştirmek için süreç yeniden başlatılıyor (restart policy)",
-                        _finding_id_strikes,
-                    )
-                    os._exit(123)
-        raise
-    with _lock:
-        _finding_id_strikes = 0
-    return res
+    # Okuma yolu: ağ gecikmesi/geçici hatalarda daha uzun/çok deneme (toplam ~7.5 sn)
+    return _run_with_reopen_retry(_query_sync_inner, workspace_id, vec, top_k, attempts=5, backoff=0.5)
 
 
 def _query_sync_inner(workspace_id: str, vec, top_k: int) -> list[dict]:
@@ -258,15 +250,14 @@ def _query_sync_inner(workspace_id: str, vec, top_k: int) -> list[dict]:
                 "Koleksiyon yeniden indekslenmelidir."
             ) from exc
         if "finding id" in str(exc).lower():
-            # Çok süreçli yazma/okuma sonrası ANN (HNSW) segmenti sürece özgü bozuk
-            # okunabilir; SQLite tarafı (metadata + gömülüler) sağlamdır → exact kosinüs.
+            # Beklenmedik segment tutarsızlığı (sunucu tek süreç olsa da istisnai):
+            # exact kosinüs ile sağlam taraftan cevap üret.
             try:
-                LOG.warning("[chroma] HNSW okuma bozuk ('finding id') — exact kosinüs fallback")
+                LOG.warning("[chroma] 'finding id' — exact kosinüs fallback")
                 return _exact_query_sync(workspace_id, vec, top_k)
             except Exception as fexc:
                 LOG.warning(
-                    "[chroma] exact fallback BAŞARISIZ (%s): %s — taze istemciyle denendi, "
-                    "süreç içi Chroma durumu bozuk kalabilir; restart gerekebilir",
+                    "[chroma] exact fallback BAŞARISIZ (%s): %s",
                     type(fexc).__name__,
                     fexc,
                 )
@@ -284,27 +275,16 @@ def _query_sync_inner(workspace_id: str, vec, top_k: int) -> list[dict]:
 
 
 def _exact_query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
-    """HNSW okuma bozulduğunda SQLite segmentinden exact cosine sorgusu.
+    """Beklenmedik ANN tutarsızlığında `get()` üzerinden exact cosine sorgusu.
 
-    İki katman: önce modül-cache istemci; o da bozuksa (aynı süreçteki rust durumu)
-    TAZE standalone istemci açılır (hangisi sağlıklıysa o çalışır).
+    Vektörler/metadata sunucudan okunur; kosinüs numpy'da hesaplanır. HNSW'siz
+    doğru sonuç üretir (workspace ölçeğinde yeterince hızlı).
     """
     try:
         return _exact_via_collection(_col(), workspace_id, vec, top_k)
     except Exception:
         _reset_client("exact fallback için taze istemci")
-        fresh = chromadb.PersistentClient(
-            path=get_settings().chroma_dir,
-            settings=ChromaSettings(anonymized_telemetry=False),
-        )
-        try:
-            col = fresh.get_collection("documents")
-            return _exact_via_collection(col, workspace_id, vec, top_k)
-        finally:
-            try:
-                fresh.close()
-            except Exception:
-                pass
+        return _exact_via_collection(_col(), workspace_id, vec, top_k)
 
 
 def _exact_via_collection(collection, workspace_id: str, vec, top_k: int) -> list[dict]:

@@ -46,6 +46,21 @@ services:
       retries: 20
     restart: unless-stopped
 
+  # Vektör DB — bağımsız Chroma server (dosyaları TEK süreç sahiplenir).
+  # İstemciler (web-api/worker/panel) HTTP ile bağlanır → paylaşımlı dosya erişimi
+  # kaynaklı segment bozulmaları ('finding id') ortadan kalkar. Veri /data'dadır —
+  # kalıcıdır, silinebilir değildir (mevcut ./chroma_data devralınır).
+  chroma:
+    build:
+      context: .
+      dockerfile: chroma/Dockerfile
+    container_name: folyo-chroma
+    ports:
+      - "8002:8000"   # doğrudan erişim (debug için)
+    volumes:
+      - ./chroma_data:/data
+    restart: unless-stopped
+
   # Embed worker: bağımsız ARQ servisi — web-api'nin ürettiği embed/enrich işlerini işler.
   # Kod: worker/worker_app (settings/runners + jobs + ingest/extract/ocr/vision/summary);
   # ortak katmanı (modeller, core, chroma_store, embeddings...) web-api paketinden (`app.*`)
@@ -60,16 +75,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      chroma:
+        condition: service_started
     env_file:
       - path: ./worker/.env
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://folyo:folyo@db:5432/folyo
       REDIS_URL: redis://redis:6379/0
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
     volumes:
       - ./worker/worker_app:/app/worker_app  # worker kodu (canlı)
       - ./shared:/app/shared           # ortak katman
-      - ./chroma_data:/app/chroma_data
       - ./storage:/app/storage
     command: ["uv", "run", "--no-sync", "arq", "worker_app.worker_settings.settings"]
     restart: unless-stopped
@@ -87,6 +105,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      chroma:
+        condition: service_started
     env_file:
       - path: ./web-api/.env  # API anahtarların (yoksa compose hatasız çalışır)
         required: false
@@ -94,10 +114,11 @@ services:
       # container içi: localhost DEĞİL db servisi (host'taki api localhost kullanır)
       DATABASE_URL: postgresql+asyncpg://folyo:folyo@db:5432/folyo
       REDIS_URL: redis://redis:6379/0
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
     volumes:
       - ./web-api/app:/app/app        # canlı kod
       - ./shared:/app/shared           # ortak katman
-      - ./chroma_data:/app/chroma_data  # vektör verisi host'ta kalsın
       - ./storage:/app/storage          # yüklenen belgeler host'ta kalsın
     command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     restart: unless-stopped
@@ -132,16 +153,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      chroma:
+        condition: service_started
     env_file:
       - path: ./panel-api/.env
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://folyo:folyo@db:5432/folyo
-      CHROMA_DIR: /app/chroma_data
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
     volumes:
       - ./panel-api/app:/app/app
       - ./shared:/app/shared           # ortak katman
-      - ./chroma_data:/app/chroma_data
     command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     restart: unless-stopped
 
