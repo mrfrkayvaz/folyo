@@ -24,7 +24,7 @@ def _message(obj: dict) -> str:
 
 
 def _context_label(c: dict) -> str:
-    """Bağlam bloğu künyesi: belge, sayfa, parça (görsele öz: `görsel: belge_id/dosya_adı`)."""
+    """Context block label: document, page, chunk (images add `image: doc_id/file_name`)."""
     parts = [c["name"], f"sayfa {c.get('page_number', 1)}", f"parça {c['chunk_index'] + 1}"]
     if c.get("content_type") == "image" and c.get("image_path"):
         parts.append(f"görsel: {c.get('doc_id', '?')}/{c['image_path']}")
@@ -32,9 +32,9 @@ def _context_label(c: dict) -> str:
 
 
 def _user_content(context: str, question: str, context_blocks: list[dict]) -> str:
-    """Kullanıcı mesajı: bağlam + bu soruda kullanılabilir görseller + soru."""
-    content = f"BAĞLAM (yüklenen belgelerden alıntılar):\n\n{context}"
-    # Aynı görsel birden çok parçada yer alabilir; listede bir kez görünsün.
+    """User message: context + available images + question."""
+    content = f"CONTEXT (excerpts from uploaded documents):\n\n{context}"
+    # The same image may appear in several chunks; list it once.
     avail = list(dict.fromkeys(
         f"[Görsel: {c.get('doc_id', '?')}/{c['image_path']}]"
         for c in context_blocks
@@ -42,15 +42,15 @@ def _user_content(context: str, question: str, context_blocks: list[dict]) -> st
     ))
     if avail:
         content += (
-            "\n\nKULLANILABİLİR GÖRSELLER: "
+            "\n\nAVAILABLE IMAGES: "
             + ", ".join(avail)
-            + "\nBu görsellerden birinin içeriğini kullandıysan, listeden birebir kopyaladığın "
-            + "[Görsel: ...] yer tutucusunu görselin en alakalı olduğu TEK noktaya koy (blok "
-            + "görsel olarak çizilir). Bir görseli yalnızca BİR kez göster: birden fazla bilgi "
-            + "aynı görseldense de yer tutucuyu tekrarlama ve o görsel için [Belge, sayfa, parça] "
-            + "atıfı yazma."
+            + "\nIf you used the content of one of these images, copy its [Görsel: ...] placeholder "
+            + "verbatim from the list and place it at the single most relevant point (it is rendered "
+            + "as a block image). Show each image only ONCE: even if several pieces of information "
+            + "come from the same image, do not repeat the placeholder and do not write a "
+            + "[Belge, sayfa, parça] atıf for it."
         )
-    return f"{content}\n\nKullanıcı sorusu: {question}"
+    return f"{content}\n\nUser question: {question}"
 
 
 async def stream_deltas(context_blocks: list[dict], question: str, on_delta):
@@ -65,10 +65,10 @@ async def stream_deltas(context_blocks: list[dict], question: str, on_delta):
         """
         label = _context_label(c)
         text = c["text"]
-        if not text.lstrip().startswith("[Bölüm:"):
+        if not text.lstrip().startswith("[Section:"):
             crumbs = c.get("breadcrumbs") or []
             if crumbs:
-                text = f"[Bölüm: {' > '.join(crumbs)}]\n{text}"
+                text = f"[Section: {' > '.join(crumbs)}]\n{text}"
         return f"{label}\n{text}"
 
     context = "\n\n".join(_context_block(c) for c in context_blocks)

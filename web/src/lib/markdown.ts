@@ -31,12 +31,13 @@ export type Block =
 
 const MATH_BLOCK_RE = /\$\$([\s\S]+?)\$\$/
 const MATH_INLINE_RE = /\$([^\s$][^$\n]*?[^\s$])\$/
-const GORSEL_RE = /\[Görsel:\s*([^\]]+?)\s*\]/i
-const CITATION_RE = /^\[\s*(.+?)\s*,\s*(?:sayfa\s*(\d+)\s*,\s*)?parça(?:lar)?\s*([^\]]+?)\s*\]$/i
+const GORSEL_RE = /\[(?:Görsel|Image):\s*([^\]]+?)\s*\]/i
+const CITATION_RE =
+  /^\[\s*(.+?)\s*,\s*(?:(?:sayfa|page)\s*(\d+)\s*,\s*)?(?:parça(?:lar)?|chunk(?:s)?)\s*([^\]]+?)\s*\]$/i
 
 // Satır içi tokenleri (öncelik sırasıyla: matematik → görsel → atıf → kalın → kod → italik).
 const INLINE_TOKEN =
-  /(\$\$[\s\S]+?\$\$|\$[^\s$][^$\n]*?[^\s$]\$|\[Görsel:[^\]]*\]|\[[^\]]*parça[^\]]*\]|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/gi
+  /(\$\$[\s\S]+?\$\$|\$[^\s$][^$\n]*?[^\s$]\$|\[(?:Görsel|Image):[^\]]*\]|\[[^\]]*(?:parça|chunk)[^\]]*\]|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/gi
 
 // "5,00" gibi döviz/para kalıplarını matematik sanmamak için içerikte matematik izi arar.
 const MATH_HINT = /[a-zA-Z\\^_=+\-*/<>≤≥≠π√∑∫±∞∝]/
@@ -59,9 +60,9 @@ export function parseInline(text = ""): InlineNode[] {
 
     const m = p.match(CITATION_RE)
     if (m) {
-      // Görünür etiket her zaman "Kaynak: …" — modelin "Belge:"/"Kaynak:" ön ekleri kırpılır.
-      const inner = p.slice(1, -1).trim().replace(/^(?:belge|kaynak)\s*:\s*/i, "")
-      const filename = m[1].trim().replace(/^(?:belge|kaynak)\s*:\s*/i, "")
+      // Görünür etiket her zaman "Source: …" — modelin "Belge/Kaynak/Document/Source:" ön ekleri kırpılır.
+      const inner = p.slice(1, -1).trim().replace(/^(?:belge|kaynak|document|source)\s*:\s*/i, "")
+      const filename = m[1].trim().replace(/^(?:belge|kaynak|document|source)\s*:\s*/i, "")
       const pageNumber = m[2] ? parseInt(m[2], 10) : null
       const firstNumMatch = m[3].match(/\d+/)
       const chunkIndex = firstNumMatch ? parseInt(firstNumMatch[0], 10) : 1
@@ -80,7 +81,7 @@ export function parseInline(text = ""): InlineNode[] {
   for (let i = 0; i < nodes.length - 1; i++) {
     const node = nodes[i]
     if (node && node.kind === "text" && nodes[i + 1]?.kind === "citation") {
-      nodes[i] = { kind: "text", text: node.text.replace(/\s*(?:belge|kaynak)\s*:\s*$/i, "") }
+      nodes[i] = { kind: "text", text: node.text.replace(/\s*(?:belge|kaynak|document|source)\s*:\s*$/i, "") }
     }
   }
   return nodes

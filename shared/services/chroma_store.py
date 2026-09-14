@@ -1,5 +1,6 @@
 """Chroma sink: doküman ekleme/silme/query — senkron op'lar thread'de, async dış API."""
 
+import os
 import threading
 import time
 
@@ -19,6 +20,11 @@ LOG = get_logger("chroma")
 _client = None
 _collection = None
 _lock = threading.Lock()
+
+# Sürece özgü 'finding id' bozulması: ardışık bu kadar tam tur başarısız olursa süreç
+# kendini sonlandırır (restart policy taze süreç açarsa bozulma iyileşir).
+_FINDING_ID_SELF_HEAL_ROUNDS = 3
+_finding_id_strikes = 0
 
 
 def _space_of(collection) -> str | None:
@@ -216,7 +222,26 @@ def _delete_ws_sync(workspace_id: str) -> None:
 
 def _query_sync(workspace_id: str, vec, top_k: int) -> list[dict]:
     # Okuma yolu: embed batch yazımıyla çakışabilir → daha uzun/çok deneme (toplam ~7.5 sn)
-    return _run_with_reopen_retry(_query_sync_inner, workspace_id, vec, top_k, attempts=5, backoff=0.5)
+    global _finding_id_strikes
+    try:
+        res = _run_with_reopen_retry(_query_sync_inner, workspace_id, vec, top_k, attempts=5, backoff=0.5)
+    except Exception as exc:
+        if "finding id" in str(exc).lower():
+            # Sürece özgü bozulma imzası: taze süreçte aynı veri çalışıyor, reset'tle iyileşmiyor.
+            # Ardışık tur sayısı eşikteyse süreci sonlandır → container restart policy taze süreç açar.
+            with _lock:
+                _finding_id_strikes += 1
+                if _finding_id_strikes >= _FINDING_ID_SELF_HEAL_ROUNDS:
+                    LOG.critical(
+                        "[chroma] %d ardışık tur 'finding id' — süreç içi Chroma durumu bozuk; "
+                        "kendini iyileştirmek için süreç yeniden başlatılıyor (restart policy)",
+                        _finding_id_strikes,
+                    )
+                    os._exit(123)
+        raise
+    with _lock:
+        _finding_id_strikes = 0
+    return res
 
 
 def _query_sync_inner(workspace_id: str, vec, top_k: int) -> list[dict]:

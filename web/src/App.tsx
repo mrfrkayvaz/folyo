@@ -69,6 +69,7 @@ function ChatApp() {
             attachments={s.att.attachments}
             onRemove={s.att.removeAttachment}
             onPreview={s.setPreviewAttachment}
+            locked={s.chatStarted}
           />
         )}
 

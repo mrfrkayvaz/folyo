@@ -16,7 +16,7 @@ describe("parseInline", () => {
   })
 
   it("kalın içinde atıf özyineleme ile çözülür", () => {
-    const nodes = parseInline("**[Belge, sayfa 2, parça 3]**")
+    const nodes = parseInline("**[Document, page 2, chunk 3]**")
     const strong = nodes[0]!
     expect(strong.kind).toBe("strong")
     if (strong.kind !== "strong") throw new Error("beklenmedik düğüm")
@@ -48,12 +48,25 @@ describe("parseInline", () => {
     expect(nodes[0]).toEqual({ kind: "math", tex: "\\int_0^1 x\\,dx", display: true })
   })
 
-  it("[Görsel: yol] → image", () => {
-    const nodes = parseInline("şekil: [Görsel: d1/crop.png]")
+  it("[Image: yol] → image (eski [Görsel:] ile de çalışır)", () => {
+    const nodes = parseInline("şekil: [Image: d1/crop.png]")
     expect(nodes).toContainEqual({ kind: "image", path: "d1/crop.png" })
+    const nodesTr = parseInline("şekil: [Görsel: d1/crop.png]")
+    expect(nodesTr).toContainEqual({ kind: "image", path: "d1/crop.png" })
   })
 
-  it("atıf: sayfa+parça bilgisi", () => {
+  it("atıf: (uyumlu söz dizimi) sayfa+parça bilgisi", () => {
+    const nodes = parseInline("[Document, page 12, chunk 45]")
+    expect(nodes[0]).toEqual({
+      kind: "citation",
+      label: "Kaynak: Document, page 12, chunk 45",
+      filename: "Document",
+      pageNumber: 12,
+      chunkIndex: 45,
+    })
+  })
+
+  it("Türkçe atıf biçimi (varsayılan)", () => {
     const nodes = parseInline("[Belge, sayfa 12, parça 45]")
     expect(nodes[0]).toEqual({
       kind: "citation",
@@ -65,20 +78,23 @@ describe("parseInline", () => {
   })
 
   it("atıf: sayfasız → pageNumber null, chunkIndex 1", () => {
-    const nodes = parseInline("[Belge, parça 3]")
+    const nodes = parseInline("[Document, chunk 3]")
     expect(nodes[0]).toMatchObject({ kind: "citation", pageNumber: null, chunkIndex: 3 })
+    // Türkçe eski biçim de çalışır
+    const nodesTr = parseInline("[Belge, parça 3]")
+    expect(nodesTr[0]).toMatchObject({ kind: "citation", pageNumber: null, chunkIndex: 3 })
   })
 
   it("modelin 'Kaynak:' ön eki görünür etiketten kırpılır ve tekrar eklenir", () => {
-    const nodes = parseInline("[Kaynak: Rapor.pdf, parça 2]")
+    const nodes = parseInline("[Kaynak: Rapor.pdf, chunk 2]")
     const cit = nodes[0] as { kind: string; filename: string; label: string }
     expect(cit.kind).toBe("citation")
     expect(cit.filename).toBe("Rapor.pdf")
-    expect(cit.label).toBe("Kaynak: Rapor.pdf, parça 2")
+    expect(cit.label).toBe("Kaynak: Rapor.pdf, chunk 2")
   })
 
-  it("atıftan önceki dış 'Kaynak:' metni kırpılır", () => {
-    const nodes = parseInline("Kaynak: [Belge, parça 1] metni")
+  it("atıftan önceki dış 'Source:' metni kırpılır", () => {
+    const nodes = parseInline("Source: [Document, chunk 1] metni")
     expect(nodes[0]).toEqual({ kind: "text", text: "" }) // ön ek tamamen tüketilir
     expect(nodes[1]!.kind).toBe("citation")
     expect(nodes[2]).toEqual({ kind: "text", text: " metni" }) // atıf sonrası korunur

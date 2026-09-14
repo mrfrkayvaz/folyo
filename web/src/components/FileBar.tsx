@@ -7,14 +7,16 @@ interface FileBarProps {
   attachments: Attachment[]
   onRemove: (key: string, docId?: string | null) => void
   onPreview?: (a: Attachment) => void
+  /** Sohbet başladıysa dosyalar kilitlenir — kaldırma butonları gizlenir. */
+  locked?: boolean
 }
 
-export default function FileBar({ attachments, onRemove, onPreview }: FileBarProps) {
+export default function FileBar({ attachments, onRemove, onPreview, locked = false }: FileBarProps) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto border-b border-base-300/40 bg-base-100 px-3 py-2 sm:px-4">
       {attachments.map((a) => {
         const busy = a.phase === "queued" || a.phase === DocumentStatus.UPLOADING || a.phase === DocumentStatus.EMBEDDING
-        const removable = !busy
+        const removable = !busy && !locked
         const err = a.phase === DocumentStatus.FAILED
         return (
           <div
@@ -25,7 +27,11 @@ export default function FileBar({ attachments, onRemove, onPreview }: FileBarPro
             }`}
             title="Önizlemek için tıklayın"
           >
-            <DocIcon className={`h-4 w-4 shrink-0 ${err ? "text-error" : "text-primary"}`} />
+            {a.phase === DocumentStatus.UPLOADING || a.phase === DocumentStatus.EMBEDDING ? (
+              <span className="loading loading-spinner h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            ) : (
+              <DocIcon className={`h-4 w-4 shrink-0 ${err ? "text-error" : "text-primary"}`} />
+            )}
             <span className="flex min-w-0 flex-col">
               <span className="min-w-0 flex-1 truncate font-medium text-base-content/90">
                 {a.filename || a.file?.name}
@@ -36,10 +42,7 @@ export default function FileBar({ attachments, onRemove, onPreview }: FileBarPro
                 )}
                 {a.phase === "queued" && <span>sırada…</span>}
                 {(a.phase === DocumentStatus.UPLOADING || a.phase === DocumentStatus.EMBEDDING) && (
-                  <>
-                    <span className="loading loading-spinner loading-xs text-primary" />
-                    <span>{a.phase === DocumentStatus.UPLOADING ? "yükleniyor…" : "taranıyor…"}</span>
-                  </>
+                  <span>{a.phase === DocumentStatus.UPLOADING ? "yükleniyor…" : "taranıyor…"}</span>
                 )}
                 {a.phase === DocumentStatus.EMBEDDED && <span className="text-success">işlendi</span>}
                 {err && <span className="text-error">{a.error || "işlenemedi"}</span>}
