@@ -163,10 +163,14 @@ Cevap: Bu bilgi belgelerde yer almıyor.
 
 ![](testing-images/orca-paste-1789383922413-bf52f432-f9d7-408e-9119-58124d955b0e.png)
 
- 
+
 
 Görüldüğü üzere normalde deepseek modeli bu bilgiyi bilmesine rağmen hem algoritma tarafında hem de llm tarafında koyduğumuz kurallar sayesinde bilginin belgelerde yer almadığını doğruladık.
 
 
 
-ÖNEMLİ NOT: Testlerimin sonuçlarına göre sistem RAG dahilinde kendine düşen görevi gayet iyi şekilde yapabilmektedir. Ancak token konusunda maddi olarak bütçem olmadığından "deepseek/deepseek-v4.1-flash" gibi low cost bir modelle testleri yaptım. Hesaplama kaynaklı yaşanabilecek hatalar modelden de kaynaklı olabilir.
+## Sistemin başarısız kaldığı durumlar
+
+Testlerimin sonuçlarına göre sistem RAG dahilinde kendine düşen görevi gayet iyi şekilde yapabilmektedir. Ancak token konusunda maddi olarak bütçem olmadığından "deepseek/deepseek-v4.1-flash" gibi low cost bir modelle testleri yaptım. Hesaplama kaynaklı yaşanabilecek hatalar modelden de kaynaklı olabilir.
+
+Bunun dışında denklem okuma işlemleri için nougat adında bir kütüphane var. çok hantal bir kütüphane olduğu için uygulamaya dahil etmedim. bu nedenle parsing işlemlerinde vision llm'e göndermeyi tercih etmediği durumlarda bazen denklemi karıştırabiliyor. 
