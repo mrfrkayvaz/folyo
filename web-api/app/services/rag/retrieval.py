@@ -89,7 +89,9 @@ def confidence_score(
     - **dense yolu** = `w_norm_d·d + (100 − w_norm_d)·c`  (semantik kanal baskın)
     - **bm25 yolu** = `w_norm_b·b + (100 − w_norm_b − bonus)·c + bonus·d` (sözlüksel kanal baskın)
 
-    - `d = norm01(top_dense, 0.15, 0.70)` — BGE-M3 TR gerçekçi aralık.
+    - `d = norm01(top_dense, settings.confidence_dense_min, settings.confidence_dense_max)`
+      — BGE-M3 TR gerçekçi aralık (doyum 0.60'a kalibre edildi: tek-kanal güçlü
+      dense, bm25 sıfırken bile doyuma ulaşabilsin).
     - `b = norm01(log1p(top_bm25), 0, log1p(5))` — BM25 log-ölçek.
     - `c = qualifying / context_k` — iki retrieverin birlikte geçtiği parça oranı.
     Kurallar: dense tamamen yokken güçlü BM25 (`b ≥ 0.5`) → taban 74 (eski

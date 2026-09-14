@@ -49,7 +49,11 @@ class Settings(BaseSettings):
     #   dense yolu = norm·d + (100 − norm)·c
     #   bm25 yolu  = norm·b + (100 − norm − bonus)·c + bonus·d
     confidence_dense_min: float = 0.15    # BGE-M3 TR gerçekçi alt taban (norm başlangıcı)
-    confidence_dense_max: float = 0.70    # doyum — alakalı ölçüm ~0.69
+    # Doyum — canlı korpusa göre kalibre edildi (09-14 ölçüm): alakalı dense dağılımı
+    # ~0.34-0.64. 0.70 doyum bu veride neredeyse hiç ulaşılmıyordu; tek-kanal güçlü
+    # durumlar (bm25 ölüyken) 55-60'a takılıyordu. 0.60'ta dense 0.60+ kendi başına
+    # 'yüksek'e ulaşabilir; 0.45-0.55 orta-üstü ölçeklenir (bm25 sıfırken bile).
+    confidence_dense_max: float = 0.60
     confidence_bm25_sat: float = 5.0      # ham BM25 doyumu (log-ölçek)
     confidence_path_dense_norm: float = 92.0   # dense yolunda dense ağırlığı (kalan: uzlaşma)
     confidence_path_bm25_norm: float = 64.0    # bm25 yolunda bm25 ağırlığı
