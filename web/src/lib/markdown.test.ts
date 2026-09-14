@@ -93,23 +93,31 @@ describe("parseInline", () => {
     expect(cit.label).toBe("Kaynak: Rapor.pdf, chunk 2")
   })
 
-  it("bileşik künye parantezi parçalara ayrılır ve Görsel: ayrı düğüm olur", () => {
+  it("bileşik parantezde Görsel: ayrılır, atıflar tek rozette birleşik kalır", () => {
     const nodes = parseInline(
       "[folyo-gorsel-test.pdf, sayfa 1, parça 3; sayfa 2, parça 8; Görsel: 1d2077da-8317-4f47-80db-78753a6b896f/p2_i1.png]",
     )
-    expect(nodes).toHaveLength(3)
+    expect(nodes).toHaveLength(2)
     expect(nodes[0]).toMatchObject({
       kind: "citation",
       filename: "folyo-gorsel-test.pdf",
       pageNumber: 1,
       chunkIndex: 3,
+      label: "Kaynak: folyo-gorsel-test.pdf, sayfa 1, parça 3; sayfa 2, parça 8",
     })
-    expect(nodes[1]).toMatchObject({ kind: "citation", chunkIndex: 8 })
-    expect(nodes[2]).toEqual({ kind: "image", path: "1d2077da-8317-4f47-80db-78753a6b896f/p2_i1.png" })
+    expect(nodes[1]).toEqual({ kind: "image", path: "1d2077da-8317-4f47-80db-78753a6b896f/p2_i1.png" })
   })
 
-  it("bileşik parantez (İngilizce segmentler) da ayrışır", () => {
+  it("parantez içi çoklu atıf (görselsiz) tek rozet kalır", () => {
+    const nodes = parseInline("[Doc.pdf, sayfa 1, parça 3; sayfa 2, parça 8]")
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0]).toMatchObject({ kind: "citation" })
+    expect(nodes[0]).toMatchObject({ label: "Kaynak: Doc.pdf, sayfa 1, parça 3; sayfa 2, parça 8" })
+  })
+
+  it("bileşik parantez (İngilizce) görseli ayrıştırır", () => {
     const nodes = parseInline("[Doc.pdf, page 1, chunk 2; Image: d1/c1.png]")
+    expect(nodes).toHaveLength(2)
     expect(nodes[0]).toMatchObject({ kind: "citation", filename: "Doc.pdf", pageNumber: 1, chunkIndex: 2 })
     expect(nodes[1]).toEqual({ kind: "image", path: "d1/c1.png" })
   })

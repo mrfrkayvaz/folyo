@@ -64,11 +64,11 @@ function makeCitation(m: RegExpMatchArray, inner: string): InlineNode {
 }
 
 /**
- * Tek köşeli parantez içinde ';' ile birleşmiş çoklu künyeyi parça parça çözer:
- * her künye ayrı atıf, `[Görsel: …]` segmenti ayrı görsel düğümü olur.
- * Bileşik değilse null döner (normal tek-künye yolu devam eder).
+ * Tek köşeli parantez içinden `[Görsel: …]`/`[Image: …]` segment(ler)ini ayrıştırır.
+ * Atıflar parantez içinde ';' ile yan yana KALABILIR (tek atıf rozeti) — yalnızca
+ * görsel düğümü ayrılır. Görsel yoksa null döner (normal tek-atıf yolu devam eder).
  */
-function parseCompositeBracket(raw: string): InlineNode[] | null {
+function extractImagesFromBracket(raw: string): InlineNode[] | null {
   if (!(raw.startsWith("[") && raw.endsWith("]") && raw.includes(";"))) return null
   const parts = raw
     .slice(1, -1)
@@ -76,21 +76,12 @@ function parseCompositeBracket(raw: string): InlineNode[] | null {
     .map((s) => s.trim())
     .filter(Boolean)
   if (parts.length < 2) return null
-  const out: InlineNode[] = []
+  const images: InlineNode[] = []
   for (const part of parts) {
     const im = part.match(SEG_IMAGE_RE)
-    if (im) {
-      out.push({ kind: "image", path: im[1].trim() })
-      continue
-    }
-    const cm = part.match(SEG_CITATION_RE)
-    if (cm) {
-      out.push(makeCitation(cm, part))
-      continue
-    }
-    out.push({ kind: "text", text: part })
+    if (im) images.push({ kind: "image", path: im[1].trim() })
   }
-  return out
+  return images.length ? images : null
 }
 
 export function parseInline(text = ""): InlineNode[] {
@@ -105,8 +96,19 @@ export function parseInline(text = ""): InlineNode[] {
     const im = p.match(GORSEL_RE)
     if (im) return [{ kind: "image", path: im[1].trim() }]
 
-    const composite = parseCompositeBracket(p)
-    if (composite) return composite
+    const images = extractImagesFromBracket(p)
+    if (images) {
+      // Görsel segment(ler)i ayır; kalan künyeler TEK atıf rozetinde birleşik kalır
+      const rest = p
+        .slice(1, -1)
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => !SEG_IMAGE_RE.test(s))
+        .join("; ")
+      const m = rest ? rest.match(SEG_CITATION_RE) : null
+      if (m) return [makeCitation(m, rest), ...images]
+      return images
+    }
 
     const m = p.match(CITATION_RE)
     if (m) return [makeCitation(m, p.slice(1, -1).trim())]
